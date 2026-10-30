@@ -388,6 +388,18 @@ int pgm_pack_open(const char *path)
 		return -1;
 	h = pack_count;
 
+	/* 调试用：脚本包（gmcode）强制走明文 src/ 目录，
+	   方便改脚本验证而不用重新打包。资源包仍走二进制封包。 */
+	if (getenv("PGM_MAC_SRC") && strstr(path, "gmcode")) {
+		g_pgm.packs[h].kind = PGM_PACK_DIR;
+		snprintf(g_pgm.packs[h].path, sizeof(g_pgm.packs[h].path),
+				 "%s/src", g_pgm.root);
+		pack_count++;
+		pgm_log("pack: PGM_MAC_SRC -> 强制目录模式 %s\n",
+				g_pgm.packs[h].path);
+		return h;
+	}
+
 	if (pgm_resolve(path, resolved, sizeof(resolved)) != 0)
 		return -1;
 

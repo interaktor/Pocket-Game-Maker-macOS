@@ -126,6 +126,38 @@ if not self.image_p[self.image_index+1] then return end
 函数 —— 和 `am_scene_render` 是同一类情况。判断某个 API 到底是原生还是 Lua 的，
 用 `grep 'function <名字>'` 最可靠。
 
+## 完整场景合成已验证
+
+用一个自定义测试脚本（`build/spritetest/src/first.ev`）验证精灵绘制链路：
+
+```
+msgboxon()                          <- 消息框
+bg("sv005b.png")                    <- 背景 CG
+wait(300)
+text("背景和立绘测试")
+textcl()
+fg("cgmode_next.png",1)             <- 前景精灵
+fgxy(1,150,20)
+fgon(1)
+text("精灵已显示")
+textcl()
+```
+
+结果（见 `docs/images/p3-bg-scene.png` 与 `p3-sprite-layer.png`）：
+
+* 背景 CG 正确铺满 480×272
+* 前景精灵（CG 画廊 UI）正确叠加在背景之上
+* 消息框在最上层，半透明（4444 alpha 混合生效）
+* 三张图层面序完全符合 `am_scene_render` 的 bg -> fg -> text_layer 顺序
+
+也就是说 **PGM 的完整渲染管线已经跑通**：背景、立绘、UI 精灵、对话框、彩色中文文本、
+文本层清空、alpha 混合全部正常。
+
+### 新增调试开关 `PGM_MAC_SRC=1`
+
+强制脚本包走明文 `src/` 目录（资源包仍读 `gmdata.bin`），这样改 `.ev` 脚本不用重新打包
+就能验证。上面的测试场景就是用它跑的。
+
 ## 下一步
 
 1. **消息框与背景图没有绘制** —— 目前只有文字，没有 `msgbox01.png` 底板和背景。
