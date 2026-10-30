@@ -158,6 +158,34 @@ textcl()
 强制脚本包走明文 `src/` 目录（资源包仍读 `gmdata.bin`），这样改 `.ev` 脚本不用重新打包
 就能验证。上面的测试场景就是用它跑的。
 
+## 真实输入链路（已打通）
+
+`ControlInit("press_down","press_up","analog")` / `TouchInit(...)` 传的是
+**Lua 全局函数名**。宿主必须把它们注册成 nge2 的 C 回调才能真正收到按键：
+
+```
+nge_mac 事件队列 -> nge_input.c InputProc -> btn_down()
+    -> pgm_input.c 的 C 跳板 -> Lua press_down(key) -> scene:key_down(key)
+```
+
+之前只是把名字打日志，键盘完全没反应。现在 `src/pgm_input.c` 负责桥接。
+
+配套加了 `nge_mac_inject_key(code, down)`，可以把按键压进 nge_mac 的事件队列，
+从而**走完整条链路**做自动化验证（而不是绕开输入层直接调 Lua 回调）。
+实测对话能从 `first.ev` 第 5 行一路推进到第 12 行（脚本结束）。
+
+## 存档读写（已验证）
+
+`amp_pubsave` 写出的文件与代码精确对应：
+
+| 文件 | 大小 | 头部 | 对应代码 |
+|---|---|---|---|
+| `DATA.SFO` | 8192 | `"PGMCE"` | `PGBufferCreate(1024*8)` + `MEMSTRCPY(buf,GAME_NAME,MEM_UINT8_64)` |
+| `DATA.BIN` | 65536 | `ff ff 00 00` (65535) | `PGBufferCreate(1024*64)` + `MEMNUMCPY(buf,65535,MEM_SINT32)` |
+
+文件大小、头部内容、字段宽度全部吻合，说明 `MEM*` 系列与 `WriteBuffer` 是对的。
+存档目录是 `<游戏根目录>/PGMSAVEDATA/<GAME_NAME>SYS/`。
+
 ## 下一步
 
 1. **消息框与背景图没有绘制** —— 目前只有文字，没有 `msgbox01.png` 底板和背景。

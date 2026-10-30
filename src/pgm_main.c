@@ -27,6 +27,7 @@
 #include "nge.h"
 #include "nge_graphics.h"
 #include "nge_input.h"
+#include "../third_party/libnge2/src/mac/nge_mac.h"
 
 static int is_dir(const char *p)
 {
@@ -234,21 +235,13 @@ int main(int argc, char *argv[])
 			InputProc();
 
 			if (autokey > 0 && (i % autokey) == 0) {
-				/* 取引擎自己注册的按下/抬起回调（engine.sys 里的 press_down/up）*/
-				static const char *cbs[2] = { "press_down", "press_up" };
-				int k;
-				for (k = 0; k < 2; k++) {
-					lua_getglobal(L, cbs[k]);
-					if (lua_isfunction(L, -1)) {
-						/* 对话推进用 CIRCLE（见 SpeakScene:KeyDown），
-						   CROSS 是 drawhide() 隐藏对话框 */
-						lua_pushinteger(L, PSP_BUTTON_CIRCLE);
-						if (lua_pcall(L, 1, 0, 0) != 0)
-							lua_pop(L, 1);
-					} else {
-						lua_pop(L, 1);
-					}
-				}
+				/* 走完整的输入链路：注入 nge_mac 事件队列，
+				   再经 InputProc -> btn_down -> Lua press_down -> scene:key_down
+				   对话推进用的是 CIRCLE（见 SpeakScene:KeyDown）*/
+				nge_mac_inject_key(PSP_BUTTON_CIRCLE, 1);
+			}
+			if (autokey > 0 && (i % autokey) == 1) {
+				nge_mac_inject_key(PSP_BUTTON_CIRCLE, 0);
 			}
 
 			lua_getglobal(L, "PGLoop");

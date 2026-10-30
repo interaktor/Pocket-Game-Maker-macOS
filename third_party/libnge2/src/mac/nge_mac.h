@@ -55,6 +55,13 @@ int  nge_mac_poll_event(nge_mac_event *ev);
 /** Current drawable size in pixels. */
 void nge_mac_get_size(int *w, int *h);
 
+/**
+ * 把一个按键事件压进 nge_mac 的事件队列。
+ * 用于自动化测试：走完整条 "事件队列 -> InputProc -> btn_down -> Lua" 链路，
+ * 而不是绕过输入层直接调 Lua 回调。
+ */
+void nge_mac_inject_key(int code, int down);
+
 /** Ask for application termination at the next poll. */
 void nge_mac_request_quit(void);
 

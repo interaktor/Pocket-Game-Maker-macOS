@@ -380,6 +380,11 @@ void nge_mac_get_size(int *w, int *h)
 	if (h) *h = (int)b.size.height;
 }
 
+void nge_mac_inject_key(int code, int down)
+{
+	evq_push(down ? NGE_MAC_EV_KEYDOWN : NGE_MAC_EV_KEYUP, code, 0, 0);
+}
+
 void nge_mac_request_quit(void)
 {
 	g_quit_requested = 1;

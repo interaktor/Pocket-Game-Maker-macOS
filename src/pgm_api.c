@@ -273,10 +273,7 @@ static int api_PGMShutDown(lua_State *L)
 /* ControlInit / TouchInit：回调名，P2 阶段只记录 */
 static int api_ControlInit(lua_State *L)
 {
-	pgm_log("[api ] ControlInit(%s, %s, %s)\n",
-			luaL_optstring(L, 1, "-"), luaL_optstring(L, 2, "-"),
-			luaL_optstring(L, 3, "-"));
-	return 0;
+	return pgm_api_control_init(L);
 }
 
 /* InputProc() —— Lua 侧（ClassBase.lua:97）会调用，转给 nge2 的事件轮询 */
@@ -289,10 +286,7 @@ static int api_InputProc(lua_State *L)
 
 static int api_TouchInit(lua_State *L)
 {
-	pgm_log("[api ] TouchInit(%s, %s, %s)\n",
-			luaL_optstring(L, 1, "-"), luaL_optstring(L, 2, "-"),
-			luaL_optstring(L, 3, "-"));
-	return 0;
+	return pgm_api_touch_init(L);
 }
 
 /* ================================================================== */
