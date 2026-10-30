@@ -129,3 +129,6 @@ echo "  $BUILD/p1_smoke 20 /tmp/p1_smoke.png     # P1: 渲染"
 echo "  ./scripts/make-test-game.sh              # 组装测试游戏目录"
 echo "  $BUILD/pgm-mac build/testgame            # 加载 PGM 脚本框架"
 echo "  PGM_MAC_FRAMES=60 PGM_MAC_SHOT=/tmp/g.png $BUILD/pgm-mac ../PGM-CE  # 跑主循环并截图"
+echo
+echo "打包成可双击的 .app："
+echo "  ./scripts/build.sh Release && ./scripts/make-app.sh Release ../PGM-CE"

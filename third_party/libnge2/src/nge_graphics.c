@@ -61,6 +61,13 @@
 #include <OpenGL/gl.h>
 #include "mac/nge_mac.h"
 
+#elif defined NGE_MAC
+/* Apple's <OpenGL/gl.h> already includes <OpenGL/glext.h>, which declares
+   the *EXT framebuffer entry points directly (no GLEW needed). We request
+   the legacy 2.1 profile, which still exposes fixed-function GL. */
+#include <OpenGL/gl.h>
+#include "mac/nge_mac.h"
+
 #elif defined NGE_WIN || defined NGE_LINUX
 #include <GL/glew.h>
 #include <GL/gl.h>

@@ -449,6 +449,31 @@ UPSTREAM_BUGS = [
 ]
 PATCHES.extend(UPSTREAM_BUGS)
 
+# =====================================================================
+# 平台检测修复：macOS 上 TARGET_OS_IPHONE 被定义成 0，
+# 而 "defined TARGET_OS_IPHONE" 判断的是有没有定义 -> 误判成 iOS
+# =====================================================================
+PLATFORM_FIX_OLD = (b"#elif defined TARGET_OS_IPHONE || defined TARGET_IPHONE_SIMULATOR\n"
+                    b"#define NGE_IPHONE\n")
+PLATFORM_FIX_NEW = (
+    b"#elif defined __APPLE__\n"
+    b"/* PGM-Mac: on macOS <TargetConditionals.h> defines TARGET_OS_IPHONE as 0.\n"
+    b"   'defined TARGET_OS_IPHONE' tests for definition, not value, so macOS\n"
+    b"   was misdetected as NGE_IPHONE and pulled in the GLES/iOS code paths.\n"
+    b"   Check __APPLE__ first, then use the real TargetConditionals value. */\n"
+    b"#include <TargetConditionals.h>\n"
+    b"#if defined TARGET_OS_IPHONE && TARGET_OS_IPHONE\n"
+    b"#define NGE_IPHONE\n"
+    b"#else\n"
+    b"#define NGE_MAC\n"
+    b"#endif\n"
+    b"#elif defined TARGET_OS_IPHONE || defined TARGET_IPHONE_SIMULATOR\n"
+    b"#define NGE_IPHONE\n"
+)
+PATCHES.append(("include/nge_platform.h", PLATFORM_FIX_OLD, PLATFORM_FIX_NEW, 1))
+PATCHES.append(("include/nge_platform.h",
+                b"#elif defined __APPLE__\n#define NGE_MAC\n", b"", 1))
+
 
 def main():
     failures = []

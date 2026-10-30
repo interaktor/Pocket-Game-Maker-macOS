@@ -22,10 +22,12 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <mach-o/dyld.h>
 
 #include "pgm.h"
 #include "nge.h"
 #include "nge_graphics.h"
+#include "nge_platform.h"
 #include "nge_input.h"
 #include "../third_party/libnge2/src/mac/nge_mac.h"
 
@@ -109,13 +111,44 @@ int main(int argc, char *argv[])
 
 	setvbuf(stdout, NULL, _IONBF, 0);
 
-	arg = (argc > 1) ? argv[1] : ".";
+	/* 双击 .app 时没有参数：依次尝试
+	   1. app 包内的 Resources/game（make-app.sh 打进去的）
+	   2. .app 同级的常见游戏目录名
+	   3. 当前目录 */
+	{
+		char exe[1024];
+		uint32_t sz = sizeof(exe);
+		if (argc > 1) {
+			arg = argv[1];
+		} else if (_NSGetExecutablePath(exe, &sz) == 0) {
+			char res[1200];
+			char *slash;
+			/* <app>/Contents/MacOS/PGM -> <app>/Contents/Resources/game */
+			slash = strrchr(exe, '/');
+			if (slash)
+				*slash = '\0';
+			snprintf(res, sizeof(res), "%s/../Resources/game", exe);
+			if (is_dir(res))
+				arg = res;
+			else
+				arg = ".";
+		} else {
+			arg = ".";
+		}
+	}
 
 	if (find_game_root(arg, g_pgm.root, sizeof(g_pgm.root)) != 0) {
 		fprintf(stderr,
 				"找不到游戏目录：%s\n"
-				"用法: %s <游戏目录>\n"
-				"      目录里应包含 bin/pgm.ini 和 src/\n",
+				"\n"
+				"用法（命令行）:\n"
+				"    %s <游戏目录>\n"
+				"\n"
+				"用法（双击 app）:\n"
+				"    把游戏文件夹拖到 PGM.app 图标上，或把它命名为\n"
+				"    Resources/game 放进 app 包内\n"
+				"\n"
+				"游戏目录里应包含 bin/pgm.ini 与 bin/data/gmcode.bin\n",
 				arg, argv[0]);
 		return 2;
 	}
