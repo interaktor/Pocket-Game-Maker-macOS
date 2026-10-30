@@ -17,6 +17,7 @@
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
 
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
