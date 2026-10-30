@@ -174,3 +174,78 @@ glPixelStorei(GL_PACK_ROW_LENGTH, 0);
 
 期望看到：四色分区、白色边框、位于 (40,40) 的白色方块、左上到右下的黄色对角线、
 y=200 处移动的洋红方块。
+
+## src/ 目录是过时的，封包才是真框架
+
+这一条卡了很久。
+
+`PGM-CE` 仓库里同时有 `bin/data/gmcode.bin` 和 `src/`，直觉上会以为 `src/` 是
+封包的源文件、两者内容一致。**不是。** 用 `PGM_MAC_DUMP_PACK` 把封包导出来对比：
+
+| | `src/` 目录 | `gmcode.bin` |
+|---|---|---|
+| 文件数 | 22 个 lua | 43 个 |
+| `lg_init.lua` | 只 include 27 个 | include **39** 个 |
+
+封包版的 `lg_init.lua` 多 include 了 `ce_init.lua`、`cefunctions.lua`、
+`ScrollBar.lua`、`SomeEffect.lua`、`WaitScene.lua`、`AnalogScene.lua`、
+`HideScene.lua`、`HelpScene.lua`、`ConfigScene.lua`、`HistoryScene.lua`、
+`CGlist.lua`、`CGmode.lua` 这 12 个。
+
+后果：如果拿 `src/` 当工程底子（我就是这么起手的），`font()`、`msgboxon()`、
+`historybegin()` 全是 nil，因为定义它们的 `cefunctions.lua` 从来没被加载。
+而 `am_start.ev` 一跑就报 nil，看不出根因。
+
+**结论：做骨架工程必须从封包导出，不能从 `src/` 拼。**
+
+导出方法（`src/pgm_pack.c`）：
+
+```sh
+PGM_MAC_DUMP_PACK=/tmp/dump ./build/Release/pgm-mac /path/to/game
+```
+
+脚本包按行记录解出明文，资源包直接按偏移量拷原始字节，两种都支持。
+
+## .ev 的 *标签必须先替换成行号
+
+`.ev` 里写 `goto(*sel1)`、`gotoif(cond,*savedata)`、`drawramus("文字",*label)`。
+这些**不是合法 Lua** —— `*` 不能做前缀运算符，直接编译会报
+`unexpected symbol near '*'`。
+
+原版引擎的做法是执行前做文本替换：把 `*标签` 换成它所在的物理行号，于是变成
+`goto(14)`。Lua 5.1 里 `goto` 不是关键字，所以 `goto(14)` 就是一次普通函数调用，
+而 `EScriptJump(script, 14)` 也确实接收行号。
+
+移植时漏了这层预处理，表现是：
+
+- `pubdata.ev` 里 `goto(*savedata)` 全部语法错被跳过 → 存档初始化不执行
+- `drawramus("A",*a,"B",*b)` 语法错 → 选项界面根本不出现，脚本直接往下跑
+
+修法（`src/pgm_escript.c`）：`EScriptCreate` 时扫一遍所有行建标签表（`*名字` 在行首
+即为定义），`EScriptDoline` 里：标签定义行直接跳过不执行，其余行先把 `*名字` 替换
+成行号再编译。替换时要跳过字符串字面量和 `--` 注释，否则 `say("*星号*")` 会被破坏。
+
+调试开关 `PGM_TRACE_REWRITE=1` 会打印替换前后的对比：
+
+```
+[rw] main.ev:4 labels=3  drawramus("选项甲",*a,"选项乙",*b) -> drawramus("选项甲",5,"选项乙",7)
+```
+
+## 存档目录：FolderCreate 和 WriteBuffer
+
+两个独立 bug 叠加，表现是 `!! WriteBuffer 打不开: PGMSAVEDATA/PGMCESYS/DATA.BIN`。
+
+1. `FolderCreate()` 是空实现，只打日志不建目录 —— 补上 `pgm_mkdir_p()`。
+2. `WriteBuffer()` 用 `pgm_resolve()` 求路径，但那个函数只找**已存在的普通文件**，
+   写目标当然还不存在，于是退回相对路径，而相对路径是相对进程 CWD 的，不是游戏根目录。
+
+修法：新增 `pgm_write_path()`，把相对名拼到游戏根目录下并顺手建好父目录。
+
+注意存档路径不能跟着 CWD 走，否则从 Finder 双击和从终端运行会存到两个地方。
+
+## 资源路径的 data/ 前缀
+
+框架拼资源名用的是 `PGM_RES_FOLDER`（`"data/"`）+ 名字，于是字体请求的是
+`data/fz.ttf`，而文件实际在 `data/font/fz.ttf`。`pgm_resolve()` 里加一段：
+relpath 以 `data/` 开头时，剥掉前缀再按 `font/` `bgm/` `sound/` `voice/` `video/`
+`system/` 依次试。

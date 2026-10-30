@@ -19,46 +19,66 @@ AVG / 视觉小说引擎。国内现存的 PSP 自制移植游戏绝大多数都
 
 它原本只支持 **PSP / Windows / Android**，从来没有 macOS 版本。这个项目补上了这一块。
 
-## 快速开始
+## 想做个游戏？从这里开始
 
 ```sh
-# 1. 依赖（任选其一）
-brew install libpng jpeg-turbo giflib freetype
-# 或
-sudo port install libpng libjpeg-turbo giflib freetype
-
-# 2. 构建
-./scripts/build.sh Release
-
-# 3. 打包成可双击的 .app（把游戏一起打进去）
-./scripts/make-app.sh Release /path/to/游戏目录
-
-# 4. 运行
-open build/PGM.app
+./scripts/build.sh Release          # 先构建引擎（只需一次）
+./scripts/new-project.sh 我的游戏    # 生成一个能跑的工程
+cd 我的游戏 && ./run.sh             # 跑起来
 ```
 
-游戏目录的结构应该是：
+然后**只改一个文件**：`src/user/main.ev`。
 
 ```
-游戏目录/
-├── bin/
-│   ├── pgm.ini
-│   ├── engine.sys
-│   └── data/
-│       ├── gmcode.bin     ← 脚本封包
-│       ├── gmdata.bin     ← 图片封包
-│       ├── font/          ← 字体
-│       └── bgm/ sound/ voice/ video/
-└── src/                   ← 开发期脚本目录（玩家版本可以没有）
+text("你好，世界。")
+textcl()
 ```
 
-也可以用命令行直接跑：
+改完保存，重新运行就生效 —— **不需要打包，不需要任何 Windows 工具**。
+
+`starter/` 就是那个骨架工程，里面带着一份 `README.md` 逐条讲怎么写台词、放图片、放音乐、做选项。所有重要的东西都在 `src/user/main.ev` 和 `src/files/` 里，其余是框架，不用动。
+
+## 运行现成的 PGM 游戏
 
 ```sh
 ./build/Release/pgm-mac /path/to/游戏目录
 ```
 
-或者把游戏文件夹**拖到 PGM.app 图标上**。
+或者打包成可双击的 `.app`（把游戏一起塞进去，拷到别的 Mac 也不用装依赖）：
+
+```sh
+./scripts/make-app.sh Release /path/to/游戏目录
+open build/PGM.app
+```
+
+也可以把游戏文件夹**直接拖到 `PGM.app` 图标上**。
+
+游戏目录的结构：
+
+```
+游戏目录/
+├── bin/
+│   ├── pgm.ini            ← 窗口大小、路径配置
+│   ├── engine.sys         ← 框架引导脚本
+│   └── data/
+│       ├── gmcode.bin     ← 脚本封包（可选，见下）
+│       ├── gmdata.bin     ← 图片封包（可选）
+│       ├── font/          ← 字体
+│       └── bgm/ sound/ voice/ video/
+└── src/                   ← 散装脚本目录
+    ├── am_start.ev        ← 入口
+    ├── system/            ← 框架脚本
+    ├── user/              ← 你自己写的剧本
+    └── files/             ← 你自己放的图
+```
+
+### 没有封包也能跑
+
+原版的工作流是「写 `src/` → 跑 `pgsp.exe` 打 `gmcode.bin` → 跑 `pgrp.exe` 打 `gmdata.bin`」。那两个是 Windows 程序，macOS 上跑不了。
+
+所以这个移植版**在封包文件不存在时自动改读散装目录**：脚本读 `src/`，图片读 `src/files/`。改脚本、丢张图进去，直接运行就见效。
+
+想验证玩家拿到的封包形态，设 `PGM_MAC_PACK=1` 强制走二进制封包。
 
 ## 架构
 

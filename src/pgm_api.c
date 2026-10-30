@@ -209,10 +209,17 @@ static int api_FileIsExist(lua_State *L)
 static int api_FolderCreate(lua_State *L)
 {
 	const char *d = luaL_checkstring(L, 1);
-	char cmd[1300];
-	snprintf(cmd, sizeof(cmd), "%s", d);
-	lua_pushboolean(L, 1);
-	pgm_log("[api ] FolderCreate(%s)\n", d);
+	char path[1300];
+	int rc;
+
+	/* 必须真的建目录：存档就写在这里面 */
+	if (d[0] == '/')
+		snprintf(path, sizeof(path), "%s", d);
+	else
+		snprintf(path, sizeof(path), "%s/%s", g_pgm.root, d);
+	rc = pgm_mkdir_p(path);
+	pgm_log("[api ] FolderCreate(%s) -> %s\n", d, rc == 0 ? "ok" : "失败");
+	lua_pushboolean(L, rc == 0);
 	return 1;
 }
 

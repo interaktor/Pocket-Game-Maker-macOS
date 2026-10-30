@@ -1,0 +1,25 @@
+-- new line
+-- if public data is exist then load
+gotoif(FileIsExist(GetFullPubGameDataFolderPath() .. "/DATA.SFO"),9)
+-- new line
+-- else create public data
+goto(14)
+-- new line
+-- =========================================================================
+-- new line
+gotoif(PGMIOS,21)
+amp_pubload()
+pub_value_load()
+goto(19)
+-- new line
+gotoif(PGMIOS,23)
+pub_value_init()
+amp_pubsave()
+goto(19)
+-- new line
+exit()
+-- new line
+amp_pubload()
+goto(19)
+amp_pubsave()
+goto(19)

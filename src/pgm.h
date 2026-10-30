@@ -79,6 +79,10 @@ extern pgm_game g_pgm;
 /* ---- 路径工具 ---- */
 /* 在 root/bin 与 root/src 下依次查找 relpath，成功时写入 out */
 int pgm_resolve(const char *relpath, char *out, size_t outsz);
+/* 递归建目录（等价 mkdir -p） */
+int pgm_mkdir_p(const char *path);
+/* 把相对名解析成"游戏根目录下的可写路径"，并顺手建好父目录 */
+int pgm_write_path(const char *name, char *out, size_t outsz);
 
 /* ---- 封包 ---- */
 int  pgm_pack_open(const char *path);          /* 返回句柄索引，失败 <0 */

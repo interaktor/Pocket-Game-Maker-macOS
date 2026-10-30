@@ -20,7 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdlib.h>
+#include <ctype.h>
 
 #include "pgm.h"
 #include "nge_timer.h"
@@ -32,6 +32,10 @@ typedef struct {
 	int    nlines;
 	int    cur;    /* 1 起；> nlines 表示结束 */
 	char   name[128];
+	/* 标签表：.ev 里的 *名字 只是行号别名，执行前要换成数字 */
+	char **labels;
+	int   *label_lines;
+	int    nlabels;
 } pgm_escript;
 
 static int es_gc(lua_State *L)
@@ -42,8 +46,15 @@ static int es_gc(lua_State *L)
 		for (i = 0; i < e->nlines; i++)
 			free(e->lines[i]);
 		free(e->lines);
+		for (i = 0; i < e->nlabels; i++)
+			free(e->labels[i]);
+		free(e->labels);
+		free(e->label_lines);
 		e->lines = NULL;
 		e->nlines = 0;
+		e->labels = NULL;
+		e->label_lines = NULL;
+		e->nlabels = 0;
 	}
 	return 0;
 }
@@ -99,6 +110,133 @@ static void split_lines(pgm_escript *e, char *text)
 	}
 }
 
+/* ------------------------------------------------------------------ */
+/* 标签表                                                              */
+/*                                                                     */
+/* .ev 里的 *名字 是行号别名。gotoif(cond,*savedata) 这种写法本身不是   */
+/* 合法 Lua（* 不能做前缀运算符），必须在执行前把 *名字 替换成它所在的  */
+/* 物理行号，变成 gotoif(cond,14) —— Lua 5.1 里 goto 不是关键字，所以   */
+/* goto(14) 就是一次普通的函数调用。                                   */
+/* ------------------------------------------------------------------ */
+
+static int is_name_char(unsigned char c)
+{
+	return isalnum(c) || c == '_' || c >= 0x80;
+}
+
+/* 行首（允许缩进）是 *名字 的，就是标签定义行 */
+static const char *label_def(const char *line, int *len)
+{
+	const char *p = line;
+	int n = 0;
+
+	if (!p)
+		return NULL;
+	while (*p == ' ' || *p == '\t')
+		p++;
+	if (*p != '*')
+		return NULL;
+	p++;
+	while (is_name_char((unsigned char)p[n]))
+		n++;
+	if (n == 0)
+		return NULL;
+	if (len)
+		*len = n;
+	return p;
+}
+
+static void build_labels(pgm_escript *e)
+{
+	int i;
+
+	e->labels = malloc((size_t)(e->nlines + 1) * sizeof(char *));
+	e->label_lines = malloc((size_t)(e->nlines + 1) * sizeof(int));
+	e->nlabels = 0;
+	if (!e->labels || !e->label_lines)
+		return;
+
+	for (i = 0; i < e->nlines; i++) {
+		int n = 0;
+		const char *p = label_def(e->lines[i], &n);
+		char *s;
+
+		if (!p)
+			continue;
+		s = malloc((size_t)n + 1);
+		if (!s)
+			break;
+		memcpy(s, p, (size_t)n);
+		s[n] = '\0';
+		e->labels[e->nlabels] = s;
+		e->label_lines[e->nlabels] = i + 1;   /* 物理行号，1 起 */
+		e->nlabels++;
+	}
+}
+
+/* 把 *名字 换成行号，跳过字符串字面量和注释 */
+static void rewrite_labels(pgm_escript *e, const char *line,
+						   char *out, size_t outsz)
+{
+	const char *p = line;
+	size_t o = 0;
+	char quote = 0;
+
+	while (*p && o + 32 < outsz) {
+		char c = *p;
+
+		if (quote) {
+			if (c == '\\' && p[1]) {
+				out[o++] = c;
+				out[o++] = p[1];
+				p += 2;
+				continue;
+			}
+			if (c == quote)
+				quote = 0;
+			out[o++] = c;
+			p++;
+			continue;
+		}
+		if (c == '"' || c == '\'') {
+			quote = c;
+			out[o++] = c;
+			p++;
+			continue;
+		}
+		if (c == '-' && p[1] == '-') {   /* 注释：整段原样带走 */
+			while (*p && o + 1 < outsz)
+				out[o++] = *p++;
+			break;
+		}
+		if (c == '*') {
+			const char *q = p + 1;
+			int n = 0, i, hit = -1;
+
+			while (is_name_char((unsigned char)q[n]))
+				n++;
+			if (n > 0) {
+				for (i = 0; i < e->nlabels; i++) {
+					if ((int)strlen(e->labels[i]) == n &&
+						strncmp(e->labels[i], q, (size_t)n) == 0) {
+						hit = i;
+						break;
+					}
+				}
+			}
+			if (hit >= 0) {
+				o += (size_t)snprintf(out + o, outsz - o, "%d",
+									  e->label_lines[hit]);
+				p = q + n;
+				continue;
+			}
+		}
+		out[o++] = c;
+		p++;
+	}
+	out[o] = '\0';
+}
+
 /* EScriptCreate([pack,] filename) */
 static int api_EScriptCreate(lua_State *L)
 {
@@ -149,6 +287,7 @@ static int api_EScriptCreate(lua_State *L)
 	}
 	split_lines(e, data);
 	free(data);
+	build_labels(e);
 	snprintf(e->name, sizeof(e->name), "%s", name);
 	return 1;
 }
@@ -182,6 +321,7 @@ static int api_EScriptDoline(lua_State *L)
 	pgm_escript *e = to_es(L, 1);
 	const char *line;
 	char chunk[64];
+	char buf[2048];
 
 	if (!e || e->cur < 1 || e->cur > e->nlines)
 		return 0;
@@ -195,9 +335,17 @@ static int api_EScriptDoline(lua_State *L)
 	}
 	if (!line || !line[0])
 		return 0;
+	/* 标签定义行只为 goto 提供行号，本身不执行 */
+	if (label_def(line, NULL))
+		return 0;
+
+	rewrite_labels(e, line, buf, sizeof(buf));
+	if (getenv("PGM_TRACE_REWRITE") && strcmp(buf, line) != 0)
+		pgm_log("[rw] %s:%d labels=%d  %s -> %s\n",
+				e->name, e->cur, e->nlabels, line, buf);
 
 	snprintf(chunk, sizeof(chunk), "=%s:%d", e->name, e->cur);
-	if (luaL_loadbuffer(L, line, strlen(line), chunk) != 0) {
+	if (luaL_loadbuffer(L, buf, strlen(buf), chunk) != 0) {
 		const char *msg = lua_tostring(L, -1);
 		pgm_log("!! %s 第 %d 行语法错: %s  内容: %s\n",
 				e->name, e->cur, msg ? msg : "?", line);

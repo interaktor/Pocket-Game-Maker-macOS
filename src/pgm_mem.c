@@ -207,8 +207,8 @@ static int api_WriteBuffer(lua_State *L)
 	char path[1200];
 	FILE *f;
 
-	if (pgm_resolve(name, path, sizeof(path)) != 0)
-		snprintf(path, sizeof(path), "%s", name);
+	/* 写目标可能还不存在，pgm_resolve 只找已有文件，所以走可写路径 */
+	pgm_write_path(name, path, sizeof(path));
 
 	f = fopen(path, "wb");
 	if (!f) {

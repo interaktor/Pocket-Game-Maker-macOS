@@ -20,9 +20,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
+#include <errno.h>
 #include <sys/stat.h>
 
 #include "pgm.h"
+#include "nge_charsets.h"
+
+/* ------------------------------------------------------------------ */
+/* 零打包模式                                                          */
+/*                                                                     */
+/* 原版 PGM 的工作流是：写 src/ → 跑 pgsp.exe 打 gmcode.bin → 跑      */
+/* pgrp.exe 打 gmdata.bin → 才能运行。那两个是 Windows 程序，macOS    */
+/* 上根本跑不了，所以这里让引擎在封包文件不存在时直接读散装目录：       */
+/*                                                                     */
+/*     脚本 -> <root>/src/            （user 下的 .ev、system 下的 .lua） */
+/*     资源 -> <root>/src/files/      （bg/xxx.png ...）                */
+/*                                                                     */
+/* 于是作者改完 .ev、丢进一张图，直接运行就见效，不需要任何打包工具。   */
+/* 想强制走二进制封包（测试玩家拿到的形态）就设 PGM_MAC_PACK=1。       */
+/* ------------------------------------------------------------------ */
 
 pgm_game g_pgm;
 
@@ -55,10 +72,67 @@ static uint32_t rd32(const unsigned char *p)
 /* 路径解析：先 bin/，后 src/                                          */
 /* ------------------------------------------------------------------ */
 
+/* 递归建目录，等价 mkdir -p */
+int pgm_mkdir_p(const char *path)
+{
+	char tmp[1300];
+	size_t i, n;
+	struct stat st;
+
+	snprintf(tmp, sizeof(tmp), "%s", path);
+	n = strlen(tmp);
+	if (n == 0)
+		return -1;
+	for (i = 1; i <= n; i++) {
+		if (tmp[i] == '/' || tmp[i] == '\0') {
+			char c = tmp[i];
+
+			tmp[i] = '\0';
+			if (stat(tmp, &st) != 0) {
+				if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+					tmp[i] = c;
+					return -1;
+				}
+			} else if (!S_ISDIR(st.st_mode)) {
+				tmp[i] = c;
+				return -1;
+			}
+			tmp[i] = c;
+			if (!c)
+				break;
+		}
+	}
+	return 0;
+}
+
+/* 存档目录是相对游戏根目录的，不能跟着进程当前目录跑 */
+int pgm_write_path(const char *name, char *out, size_t outsz)
+{
+	char dir[1300];
+	char *slash;
+
+	if (name[0] == '/')
+		snprintf(out, outsz, "%s", name);
+	else
+		snprintf(out, outsz, "%s/%s", g_pgm.root, name);
+
+	snprintf(dir, sizeof(dir), "%s", out);
+	slash = strrchr(dir, '/');
+	if (slash) {
+		*slash = '\0';
+		if (dir[0])
+			pgm_mkdir_p(dir);
+	}
+	return 0;
+}
+
 int pgm_resolve(const char *relpath, char *out, size_t outsz)
 {
 	static const char *subdirs[] = { "", "bin/", "src/", "src/system/",
-									 "src/user/", "bin/data/", NULL };
+									 "src/user/", "src/files/", "bin/data/",
+									 NULL };
+	static const char *datakinds[] = { "font/", "bgm/", "sound/", "voice/",
+									   "video/", "system/", NULL };
 	int i;
 	struct stat st;
 
@@ -67,6 +141,20 @@ int pgm_resolve(const char *relpath, char *out, size_t outsz)
 		if (stat(out, &st) == 0 && S_ISREG(st.st_mode))
 			return 0;
 	}
+
+	/* 框架里资源名常写成 data/xxx（PGM_RES_FOLDER 拼出来的），
+	   而实际文件按类型分在 data/font、data/bgm 等子目录下。
+	   这里把 data/ 剥掉再按类型子目录试一遍，否则字体音频都找不到。 */
+	if (strncmp(relpath, "data/", 5) == 0) {
+		const char *rest = relpath + 5;
+		for (i = 0; datakinds[i]; i++) {
+			snprintf(out, outsz, "%s/bin/data/%s%s", g_pgm.root,
+					 datakinds[i], rest);
+			if (stat(out, &st) == 0 && S_ISREG(st.st_mode))
+				return 0;
+		}
+	}
+
 	out[0] = '\0';
 	return -1;
 }
@@ -372,6 +460,66 @@ static int looks_binary_pack(const unsigned char *sig, size_t n)
 	return 0;
 }
 
+/* 递归按文件名查找：pgrp 打包时把子目录拍平了，所以散装模式下
+   也要按 basename 找，作者才能把图随手丢进 src/files/ 任意子目录。 */
+static int find_by_basename(const char *dir, const char *base,
+							char *out, size_t outsz, int depth)
+{
+	DIR *d;
+	struct dirent *de;
+	int hit = -1;
+
+	if (depth > 8)
+		return -1;
+	d = opendir(dir);
+	if (!d)
+		return -1;
+	while ((de = readdir(d)) != NULL) {
+		char full[1400];
+		struct stat st;
+
+		if (de->d_name[0] == '.')
+			continue;
+		snprintf(full, sizeof(full), "%s/%s", dir, de->d_name);
+		if (stat(full, &st) != 0)
+			continue;
+		if (S_ISDIR(st.st_mode)) {
+			if (find_by_basename(full, base, out, outsz, depth + 1) == 0) {
+				hit = 0;
+				break;
+			}
+		} else if (strcmp(de->d_name, base) == 0) {
+			snprintf(out, outsz, "%s", full);
+			hit = 0;
+			break;
+		}
+	}
+	closedir(d);
+	return hit;
+}
+
+/* 把句柄 h 设为目录模式；目录不存在返回 -1 */
+static int dir_mode_open(int h, const char *subdir, const char *why)
+{
+	char path[1024];
+	struct stat st;
+
+	snprintf(path, sizeof(path), "%s/%s", g_pgm.root, subdir);
+	if (stat(path, &st) != 0 || !S_ISDIR(st.st_mode))
+		return -1;
+
+	g_pgm.packs[h].kind = PGM_PACK_DIR;
+	snprintf(g_pgm.packs[h].path, sizeof(g_pgm.packs[h].path), "%s", path);
+	g_pgm.packs[h].data = NULL;
+	g_pgm.packs[h].data_size = 0;
+	g_pgm.packs[h].ents = NULL;
+	g_pgm.packs[h].nents = 0;
+	g_pgm.packs[h].stride = 0;
+	pack_count++;
+	pgm_log("pack: %s -> 目录模式 %s\n", why, path);
+	return h;
+}
+
 int pgm_pack_open(const char *path)
 {
 	char resolved[1024];
@@ -383,24 +531,30 @@ int pgm_pack_open(const char *path)
 	int nents = 0;
 	size_t dir_start = 0;
 	int stride = 0;
+	int found;
 
 	if (pack_count >= PGM_MAX_PACK)
 		return -1;
 	h = pack_count;
+	found = (pgm_resolve(path, resolved, sizeof(resolved)) == 0);
 
-	/* 调试用：脚本包（gmcode）强制走明文 src/ 目录，
-	   方便改脚本验证而不用重新打包。资源包仍走二进制封包。 */
-	if (getenv("PGM_MAC_SRC") && strstr(path, "gmcode")) {
-		g_pgm.packs[h].kind = PGM_PACK_DIR;
-		snprintf(g_pgm.packs[h].path, sizeof(g_pgm.packs[h].path),
-				 "%s/src", g_pgm.root);
-		pack_count++;
-		pgm_log("pack: PGM_MAC_SRC -> 强制目录模式 %s\n",
-				g_pgm.packs[h].path);
-		return h;
+	/* 零打包模式：封包文件不存在时直接读散装目录 */
+	{
+		const char *fp = getenv("PGM_MAC_PACK");
+		int want_pack = (fp && *fp && strcmp(fp, "0") != 0);
+		int is_img = (strstr(path, "gmdata") != NULL);
+
+		if (!want_pack) {
+			/* 老调试开关：强制脚本包走明文 src/ */
+			if (getenv("PGM_MAC_SRC") && !is_img)
+				return dir_mode_open(h, "src", "PGM_MAC_SRC");
+			if (!found)
+				return dir_mode_open(h, is_img ? "src/files" : "src",
+									 path);
+		}
 	}
 
-	if (pgm_resolve(path, resolved, sizeof(resolved)) != 0)
+	if (!found)
 		return -1;
 
 	f = fopen(resolved, "rb");
@@ -456,10 +610,154 @@ int pgm_pack_open(const char *path)
 			resolved,
 			(stride == 128) ? "脚本封包" : "资源封包",
 			nents, dir_start, stride);
+
+	/* 调试：PGM_MAC_DUMP_PACK=<目录> 把封包里的每个条目写到磁盘，
+	   方便看清一个游戏到底带了哪些脚本和资源（框架文件常常只在封包里）。 */
+	if (getenv("PGM_MAC_DUMP_PACK")) {
+		const char *dir = getenv("PGM_MAC_DUMP_PACK");
+		int i;
+		char cmd[1200];
+
+		snprintf(cmd, sizeof(cmd), "mkdir -p '%s'", dir);
+		if (system(cmd) == 0) {
+			for (i = 0; i < nents; i++) {
+				char *d = NULL;
+				size_t ds = 0;
+				FILE *o;
+				char out[1400];
+				int ok;
+
+				if (!ents[i].valid || !ents[i].name[0])
+					continue;
+				if (stride == 128)
+					ok = (read_bin_file(&g_pgm.packs[h], ents[i].name,
+										&d, &ds) == 0);
+				else if (ents[i].off + ents[i].size <= (size_t)fsz) {
+					d = malloc(ents[i].size);
+					if (d) {
+						memcpy(d, data + ents[i].off, ents[i].size);
+						ds = ents[i].size;
+					}
+					ok = (d != NULL);
+				} else {
+					ok = 0;
+				}
+				if (!ok)
+					continue;
+				snprintf(out, sizeof(out), "%s/%s", dir, ents[i].name);
+				o = fopen(out, "wb");
+				if (o) {
+					fwrite(d, 1, ds, o);
+					fclose(o);
+					pgm_log("[dump] %s (%zu 字节)\n", ents[i].name, ds);
+				}
+				free(d);
+			}
+		}
+	}
 	return h;
 }
 
+/* ------------------------------------------------------------------ */
+/* UTF-8 剧本自动转 GBK                                                */
+/*                                                                     */
+/* 引擎的字体层按 GBK 字节序列查表，所以剧本里的中文原本必须是 GBK。   */
+/* 但现在所有编辑器（VS Code / Sublime / TextEdit）默认都存 UTF-8，    */
+/* 作者写完发现中文全是乱码，得先卡在这里很久。                        */
+/*                                                                     */
+/* 这里在读取 .lua / .ev 时自动判断：内容如果是合法 UTF-8 且有非 ASCII  */
+/* 字符，就用引擎自带的 nge_charsets_utf8_to_gbk 转成 GBK 再交给 Lua。 */
+/* 于是作者直接用默认编码写就行。转换不增删换行，.ev 的行号不受影响。   */
+/* ------------------------------------------------------------------ */
+
+/* 返回 1 表示含非 ASCII 的合法 UTF-8；纯 ASCII 返回 0；非法返回 -1 */
+static int utf8_scan(const unsigned char *s, size_t n)
+{
+	size_t i = 0;
+	int multi = 0;
+
+	while (i < n) {
+		unsigned char c = s[i];
+		int len, k;
+
+		if (c < 0x80) {
+			i++;
+			continue;
+		} else if ((c & 0xe0) == 0xc0) {
+			if (c < 0xc2)
+				return -1;
+			len = 2;
+		} else if ((c & 0xf0) == 0xe0) {
+			len = 3;
+		} else if ((c & 0xf8) == 0xf0) {
+			if (c > 0xf4)
+				return -1;
+			len = 4;
+		} else {
+			return -1;
+		}
+		if (i + (size_t)len > n)
+			return -1;
+		for (k = 1; k < len; k++)
+			if ((s[i + k] & 0xc0) != 0x80)
+				return -1;
+		multi = 1;
+		i += (size_t)len;
+	}
+	return multi;
+}
+
+static int has_text_ext(const char *name)
+{
+	const char *dot = strrchr(name, '.');
+
+	if (!dot)
+		return 0;
+	return strcmp(dot, ".lua") == 0 || strcmp(dot, ".ev") == 0;
+}
+
+static void text_normalize(const char *name, char **data, size_t *size)
+{
+	unsigned char *src = (unsigned char *)*data;
+	size_t n = *size;
+	unsigned char *dst;
+	int got;
+
+	if (!has_text_ext(name) || n == 0 || !src)
+		return;
+	if (getenv("PGM_MAC_NO_UTF8_FIX"))
+		return;
+	if (utf8_scan(src, n) != 1)
+		return;   /* 纯 ASCII 或本来就是 GBK，都不用动 */
+
+	dst = malloc(n * 2 + 8);
+	if (!dst)
+		return;
+	got = nge_charsets_utf8_to_gbk(src, dst, (int)n, (int)(n * 2 + 8));
+	if (got <= 0) {
+		free(dst);
+		return;
+	}
+	dst[got] = '\0';
+	if (getenv("PGM_TRACE_ENC"))
+		pgm_log("[enc] %s: UTF-8 -> GBK (%zu -> %d 字节)\n", name, n, got);
+	free(*data);
+	*data = (char *)dst;
+	*size = (size_t)got;
+}
+
+static int pack_read_raw(int h, const char *name, char **data, size_t *size);
+
 int pgm_pack_read(int h, const char *name, char **data, size_t *size)
+{
+	int rc = pack_read_raw(h, name, data, size);
+
+	if (rc == 0)
+		text_normalize(name, data, size);
+	return rc;
+}
+
+static int pack_read_raw(int h, const char *name, char **data, size_t *size)
 {
 	char path[1300];
 	FILE *f;
@@ -504,6 +802,19 @@ int pgm_pack_read(int h, const char *name, char **data, size_t *size)
 			f = fopen(path, "rb");
 			if (f)
 				goto found;
+		}
+		/* 慢路径：按 basename 递归找（见 find_by_basename 的说明） */
+		{
+			const char *base = strrchr(name, '/');
+			char hit[1400];
+
+			base = base ? base + 1 : name;
+			if (find_by_basename(g_pgm.packs[h].path, base, hit,
+								 sizeof(hit), 0) == 0) {
+				f = fopen(hit, "rb");
+				if (f)
+					goto found;
+			}
 		}
 		return -1;
 	}
