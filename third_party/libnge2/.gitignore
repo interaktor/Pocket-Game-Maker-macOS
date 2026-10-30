@@ -1,0 +1,8 @@
+build*/
+temp/
+samples/res/
+samples/res.*
+*Depends/
+*Depends.7z
+Android/foreign/
+Android/libs/

@@ -1,0 +1,23 @@
+# Build output
+build/
+cmake-build-*/
+*.o
+*.a
+*.dylib
+*.dSYM/
+
+# macOS
+.DS_Store
+._*
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# Runtime artefacts produced while testing the engine
+neg_log.txt
+neg_error.txt
+*.png
+!docs/**/*.png
+PGMSAVEDATA/
