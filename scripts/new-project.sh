@@ -23,6 +23,7 @@ mkdir -p "$OUT/src"
 cp "$ROOT/src/am_start.ev" "$ROOT/src/pubdata.ev" "$OUT/src/"
 cp -R "$ROOT/src/system" "$OUT/src/system"
 cp -R "$ROOT/src/files" "$OUT/src/files"
+cp "$ROOT/run.sh" "$OUT/run.sh"; chmod +x "$OUT/run.sh"
 mkdir -p "$OUT/src/user"
 
 # 只保留一张占位背景，清掉示例画册
