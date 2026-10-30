@@ -1,54 +1,51 @@
 #!/bin/sh
 #
-# new-project.sh — 从骨架创建一个新游戏工程
+# new-project.sh — 从当前工程复制出一个新游戏
 #
-# 用法：
-#   ./scripts/new-project.sh 我的游戏
-#   ./scripts/new-project.sh 我的游戏 ~/Desktop
-#
-# 生成后：
-#   cd 我的游戏 && ./run.sh
-# 然后编辑 src/user/main.ev 就行。
+# 用法: ./scripts/new-project.sh 我的游戏 [放在哪个目录]
 
 set -e
-
 NAME="$1"
 DEST="${2:-.}"
-
-if [ -z "$NAME" ]; then
-	echo "用法: $0 <工程名> [放在哪个目录]"
-	echo "例子: $0 我的第一个游戏"
-	exit 1
-fi
+[ -z "$NAME" ] && { echo "用法: $0 <工程名> [目录]"; exit 1; }
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT/starter"
-
-if [ ! -d "$SRC" ]; then
-	echo "!! 找不到骨架目录: $SRC"
-	exit 1
-fi
-
 mkdir -p "$DEST"
 case "$NAME" in
-	*/*) OUT="$NAME" ;;          # 给了完整路径就直接用
+	*/*) OUT="$NAME" ;;
 	*)   OUT="$DEST/$NAME" ;;
 esac
+[ -e "$OUT" ] && { echo "!! $OUT 已存在"; exit 1; }
 
-if [ -e "$OUT" ]; then
-	echo "!! $OUT 已经存在了，换个名字或者先删掉"
-	exit 1
-fi
+mkdir -p "$OUT"
+cp -R "$ROOT/bin" "$OUT/bin"
+mkdir -p "$OUT/src"
+cp "$ROOT/src/am_start.ev" "$ROOT/src/pubdata.ev" "$OUT/src/"
+cp -R "$ROOT/src/system" "$OUT/src/system"
+cp -R "$ROOT/src/files" "$OUT/src/files"
+mkdir -p "$OUT/src/user"
 
-cp -R "$SRC" "$OUT"
-rm -rf "$OUT/PGMSAVEDATA"
+# 只保留一张占位背景，清掉示例画册
+rm -rf "$OUT/src/files/gallery/"*.png "$OUT/PGMSAVEDATA" 2>/dev/null || true
+
+cat > "$OUT/src/user/main.ev" <<'TEMPLATE'
+-- 你的剧本就写在这个文件里
+-- 一句台词两行：text(...) 然后 textcl()
+
+*start
+msgboxon()
+bg("backdrop.png")
+
+text("第一句台词写在这里。")
+textcl()
+
+text("旁白","带人名的台词这样写。")
+textcl()
+
+jump("main.ev")
+TEMPLATE
 
 echo ">> 已创建: $OUT"
 echo
-echo "接下来："
-echo "    cd \"$OUT\""
-echo "    ./run.sh              # 跑起来看看"
-echo "    编辑 src/user/main.ev  # 写你的剧情"
-echo
-echo "如果跑不动，先构建引擎："
-echo "    cd \"$ROOT\" && ./scripts/build.sh Release"
+echo "    cd \"$OUT\" && ./run.sh"
+echo "    改 src/user/main.ev"
