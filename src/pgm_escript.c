@@ -23,6 +23,7 @@
 #include <stdlib.h>
 
 #include "pgm.h"
+#include "nge_timer.h"
 
 #define NELEM(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
@@ -188,9 +189,9 @@ static int api_EScriptDoline(lua_State *L)
 
 	if (getenv("PGM_TRACE_EV")) {
 		static int n = 0;
-		if (n++ < 40)
-			pgm_log("[ev] %s:%d  %s\n", e->name, e->cur,
-					line && line[0] ? line : "(空行)");
+		if (n++ < 400)
+			pgm_log("[ev] t=%u %s:%d  %.40s\n", nge_get_tick(),
+					e->name, e->cur, line && line[0] ? line : "(空行)");
 	}
 	if (!line || !line[0])
 		return 0;

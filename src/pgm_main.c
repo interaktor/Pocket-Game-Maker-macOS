@@ -223,7 +223,7 @@ int main(int argc, char *argv[])
 		pgm_log("进入主循环 (PGLoop)，帧数上限=%d\n",
 				max_frames > 0 ? max_frames : 0);
 
-		/* 自动按键：每 autokey 帧模拟一次确认键
+		/* 自动按键：每 autokey 帧模拟一次 CIRCLE 键
 		   （对话要按键才推进，自动化验证需要这个）*/
 		{
 			const char *ak = getenv("PGM_MAC_AUTOKEY");
@@ -240,7 +240,9 @@ int main(int argc, char *argv[])
 				for (k = 0; k < 2; k++) {
 					lua_getglobal(L, cbs[k]);
 					if (lua_isfunction(L, -1)) {
-						lua_pushinteger(L, PSP_BUTTON_CROSS);
+						/* 对话推进用 CIRCLE（见 SpeakScene:KeyDown），
+						   CROSS 是 drawhide() 隐藏对话框 */
+						lua_pushinteger(L, PSP_BUTTON_CIRCLE);
 						if (lua_pcall(L, 1, 0, 0) != 0)
 							lua_pop(L, 1);
 					} else {

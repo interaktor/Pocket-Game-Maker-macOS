@@ -206,6 +206,15 @@ static int api_ImageClone(lua_State *L)
 	return 1;
 }
 
+/* ImageClear(img) —— 清空图像内容（DialogLayer:clear 用它清文本层） */
+static int api_ImageClear(lua_State *L)
+{
+	image_p img = to_image(L, 1);
+	if (img)
+		image_clear(img);
+	return 0;
+}
+
 static int api_ImageSetMask(lua_State *L)
 {
 	image_p img = to_image(L, 1);
@@ -462,6 +471,41 @@ static int api_SoundNoop(lua_State *L)
 }
 
 /* ================================================================== */
+/* 文本层清空                                                          */
+/*                                                                    */
+/* textclear 是原生 API。Lua 侧的文本层是 DialogLayer.new()，它的 quad[]  */
+/* 是一组离屏 image，文字先画在 quad 上、再由 text_layer_render() 贴到屏幕。 */
+/* 不实现 textclear 的话上一句不会消失，会和下一句叠在一起。              */
+/* ================================================================== */
+
+static int api_textclear(lua_State *L)
+{
+	int i, n;
+
+	lua_getglobal(L, "text_layer");
+	if (!lua_istable(L, -1)) {
+		lua_pop(L, 1);
+		return 0;
+	}
+	lua_getfield(L, -1, "quad");
+	if (!lua_istable(L, -1)) {
+		lua_pop(L, 2);
+		return 0;
+	}
+	n = (int)lua_objlen(L, -1);
+	for (i = 1; i <= n; i++) {
+		image_p img;
+		lua_rawgeti(L, -1, i);
+		img = to_image(L, -1);
+		if (img)
+			image_clear(img);
+		lua_pop(L, 1);
+	}
+	lua_pop(L, 2);
+	return 0;
+}
+
+/* ================================================================== */
 /* 注册                                                               */
 /* ================================================================== */
 
@@ -480,6 +524,7 @@ void pgm_gfx_register(lua_State *L)
 		{ "ImageGetW",       api_ImageGetW },
 		{ "ImageGetH",       api_ImageGetH },
 		{ "ImageClone",      api_ImageClone },
+		{ "ImageClear",      api_ImageClear },
 		{ "ImageSetMask",    api_ImageSetMask },
 		{ "DrawImage",       api_DrawImage },
 		{ "RenderQuad",      api_RenderQuad },
@@ -490,6 +535,7 @@ void pgm_gfx_register(lua_State *L)
 		{ "BeginScene",      api_BeginScene },
 		{ "EndScene",        api_EndScene },
 		{ "ScreenToImage",   api_ScreenToImage },
+		{ "textclear",       api_textclear },
 
 		{ "FontCreate",      api_FontCreate },
 		{ "FontSetColor",    api_FontSetColor },

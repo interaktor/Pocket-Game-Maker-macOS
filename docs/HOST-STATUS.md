@@ -107,6 +107,25 @@ if not self.image_p[self.image_index+1] then return end
 `FGBase:load` 的 `fadein` 分支确实会调 `CacheImageLoad`，路径本身没问题 ——
 问题在更上游：那个 `load()` 根本没被调用。
 
+## 彩色中文与文本层清空（已解决）
+
+`first.ev` 第 10 行 `text("[c=FF0000]红[/c][c=00FF00]绿[/c][c=0000FF]蓝[/c]")`
+现在能正确渲染成**红/绿/蓝三色中文**（见 `docs/images/p3-colored-text.png`）。
+
+踩到的两个坑：
+
+1. **推进对话的是 CIRCLE 键，不是 CROSS**。`SpeakScene:KeyDown` 里
+   `PSP_BUTTON_CIRCLE` 才是"下一句"，`PSP_BUTTON_CROSS` 映射到 `drawhide()`
+   （隐藏对话框）。自动化按键要用 CIRCLE。
+2. **`ImageClear`（大写 C）没实现**。`DialogLayer:clear()` 调的是
+   `ImageClear(self.quad[i])`，而我们只注册了 `ImageCreate/ImageLoad/ImageFree/
+   ImageGetW/ImageGetH/ImageClone/ImageSetMask`。缺了它文本层永远不清空，
+   上一句会和下一句叠在一起（截图上表现为 `红绿蓝` 后面残留 `lo, PGM.`）。
+
+另外确认：`textclear` 也是 **Lua 定义**的（`SpeakScene.lua:880`），会覆盖原生同名
+函数 —— 和 `am_scene_render` 是同一类情况。判断某个 API 到底是原生还是 Lua 的，
+用 `grep 'function <名字>'` 最可靠。
+
 ## 下一步
 
 1. **消息框与背景图没有绘制** —— 目前只有文字，没有 `msgbox01.png` 底板和背景。
