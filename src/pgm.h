@@ -85,6 +85,12 @@ int  pgm_pack_open(const char *path);          /* 返回句柄索引，失败 <0
 int  pgm_pack_read(int h, const char *name, char **data, size_t *size);
 void pgm_pack_close_all(void);
 
+/* ---- 对话文本解析 ---- */
+void pgm_dialog_register(lua_State *L);
+
+/* ---- 内存缓冲区 / 定长字段 ---- */
+void pgm_mem_register(lua_State *L);
+
 /* ---- 事件脚本解释器 ---- */
 void pgm_escript_register(lua_State *L);
 

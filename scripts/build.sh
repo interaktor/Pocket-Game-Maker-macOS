@@ -109,6 +109,8 @@ cc -o "$BUILD/pgm-mac" \
 	"$ROOT/src/pgm_api.c" \
 	"$ROOT/src/pgm_gfx.c" \
 	"$ROOT/src/pgm_escript.c" \
+	"$ROOT/src/pgm_mem.c" \
+	"$ROOT/src/pgm_dialog.c" \
 	-I "$LUA_SRC" \
 	-I "$ROOT/third_party/libnge2/include" \
 	-I "$PREFIX/include" \

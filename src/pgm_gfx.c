@@ -340,16 +340,32 @@ static int api_FontSetColor(lua_State *L)
 	return 0;
 }
 
-/* FontDraw(font, text, area_image, dx, dy) */
+/* FontDraw(font, area_image, text, dx, dy)
+ *
+ * 注意参数顺序是"绘制区图像在前、文本在后"（见 SpeakScene.lua:410），
+ * 但 Lua 侧也有 (font, text, area, dx, dy) 的写法，所以这里按类型自动识别：
+ * 第 2 个参数若是 image userdata 就当 area，否则当文本。
+ */
 static int api_FontDraw(lua_State *L)
 {
 	PFont pf = to_font(L, 1);
-	const char *text = luaL_optstring(L, 2, "");
-	image_p area = to_image(L, 3);
-	int dx = (int)luaL_optinteger(L, 4, 0);
-	int dy = (int)luaL_optinteger(L, 5, 0);
+	image_p area = NULL;
+	const char *text = NULL;
+	int dx, dy;
 
-	if (pf && text)
+	if (to_image(L, 2)) {
+		area = to_image(L, 2);
+		text = luaL_optstring(L, 3, "");
+		dx = (int)luaL_optinteger(L, 4, 0);
+		dy = (int)luaL_optinteger(L, 5, 0);
+	} else {
+		text = luaL_optstring(L, 2, "");
+		area = to_image(L, 3);
+		dx = (int)luaL_optinteger(L, 4, 0);
+		dy = (int)luaL_optinteger(L, 5, 0);
+	}
+
+	if (pf && text && text[0])
 		font_drawtext(pf, text, (int)strlen(text), area, dx, dy,
 					  FONT_SHOW_NORMAL);
 	return 0;
@@ -456,6 +472,7 @@ void pgm_gfx_register(lua_State *L)
 	static const struct gfx_api api[] = {
 		{ "ImageCreate",     api_ImageCreate },
 		{ "ImageLoad",       api_ImageLoad },
+		{ "CacheImageLoad",  api_ImageLoad },   /* PGM 的缓存版，语义相同 */
 		{ "ImageFree",       api_ImageFree },
 		{ "ImageGetW",       api_ImageGetW },
 		{ "ImageGetH",       api_ImageGetH },
@@ -484,6 +501,7 @@ void pgm_gfx_register(lua_State *L)
 		{ "TimerDelete",     api_TimerDelete },
 
 		{ "SoundCreate",     api_SoundCreate },
+		{ "CacheClear",      api_SoundNoop },   /* 缓存清理：我们不做缓存 */
 	};
 	int i;
 

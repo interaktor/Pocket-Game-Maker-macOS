@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "pgm.h"
 
@@ -229,6 +230,11 @@ static int api_EScriptBack(lua_State *L)
 static int api_EScriptJump(lua_State *L)
 {
 	pgm_escript *e = to_es(L, 1);
+	if (getenv("PGM_TRACE_ES"))
+		pgm_log("[es] EScriptJump arg1=%s(%s) label=%s\n",
+				luaL_typename(L, 1),
+				e ? e->name : "无效",
+				lua_tostring(L, 2) ? lua_tostring(L, 2) : "nil");
 	if (e) {
 		int line = (int)luaL_optinteger(L, 2, 1);
 		if (line < 1)

@@ -185,7 +185,7 @@ int main(int argc, char *argv[])
 		const char *s_frames = getenv("PGM_MAC_FRAMES");
 		const char *s_shot = getenv("PGM_MAC_SHOT");
 		int max_frames = s_frames ? atoi(s_frames) : 0;
-		int i;
+		int i, autokey = 0;
 		lua_State *L = g_pgm.L;
 
 		pgm_gfx_start();
@@ -193,8 +193,31 @@ int main(int argc, char *argv[])
 		pgm_log("进入主循环 (PGLoop)，帧数上限=%d\n",
 				max_frames > 0 ? max_frames : 0);
 
+		/* 自动按键：每 autokey 帧模拟一次确认键
+		   （对话要按键才推进，自动化验证需要这个）*/
+		{
+			const char *ak = getenv("PGM_MAC_AUTOKEY");
+			autokey = ak ? atoi(ak) : 0;
+		}
+
 		for (i = 0; !g_pgm.quit && (max_frames <= 0 || i < max_frames); i++) {
 			InputProc();
+
+			if (autokey > 0 && (i % autokey) == 0) {
+				/* 取引擎自己注册的按下/抬起回调（engine.sys 里的 press_down/up）*/
+				static const char *cbs[2] = { "press_down", "press_up" };
+				int k;
+				for (k = 0; k < 2; k++) {
+					lua_getglobal(L, cbs[k]);
+					if (lua_isfunction(L, -1)) {
+						lua_pushinteger(L, PSP_BUTTON_CROSS);
+						if (lua_pcall(L, 1, 0, 0) != 0)
+							lua_pop(L, 1);
+					} else {
+						lua_pop(L, 1);
+					}
+				}
+			}
 
 			lua_getglobal(L, "PGLoop");
 			if (!lua_isfunction(L, -1)) {

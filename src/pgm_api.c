@@ -350,6 +350,8 @@ void pgm_register_api(lua_State *L)
 	/* --- 3.5 图形 / 字体 / 计时器 / 事件脚本真实实现 --- */
 	pgm_gfx_register(L);
 	pgm_escript_register(L);
+	pgm_mem_register(L);
+	pgm_dialog_register(L);
 
 	/* --- 4. 有确定数值的常量 --- */
 	reg_int(L, "PGM_QUIT",   PGM_ST_QUIT);

@@ -23,35 +23,36 @@
   `render()`/`update()`，按这个层序依次调用即可。
 * image / font / timer 都用 Lua userdata + `__gc` 包装，避免泄漏。
 
-## 当前卡点
-
-跑 `PGM_MAC_FRAMES=N ./build/Debug/pgm-mac ../PGM-CE` 能进入主循环、执行 .ev，
-但停在 `pubdata.ev` 第 11 行：
+## 当前状态：对话文本已在屏幕上渲染
 
 ```
-!! pubdata.ev 第 11 行运行错: savefunctions.lua:786:
-   attempt to perform arithmetic on local 'buffer' (a nil value)   内容: amp_pubload()
+视频: 480x272 full=0 "PocketGameMaker-ConvertedEdition-"
+Init Graphics Ok
+进入主循环 (PGLoop)，帧数上限=150
+主循环结束，共 150 帧          <- 0 个 Lua 错误
 ```
 
-两个问题，按顺序解决：
+跑 `first.ev` 的 `text("Hello, PGM.")`，屏幕左下角正确显示出 **Hello, PGM.**
+（见 `docs/images/p3-dialog-render.png`）。整条链路已经打通：
 
-1. **`goto` / `gotoif` 没有生效**。`pubdata.ev` 第 6 行的 `goto(14)` 没有跳过第 11 行，
-   说明 `EScriptJump` 没被调用或没起作用。`goto()` 的实现是：
-   ```lua
-   function goto(label)
-       if am_script.stackCount==0 then return end
-       EScriptJump(am_script[am_script.stackCount], label)
-   end
-   ```
-   下一步：打印 `am_script.stackCount` 与该表内容，确认传给 `EScriptJump` 的确实是
-   我的 escript userdata（`to_es()` 只认 `LUA_TUSERDATA`）。
+```
+gmcode.bin 解包 -> .ev 逐行执行 -> text() -> DialogCreate 解析
+   -> SpeakScene 状态机 -> FontDraw -> freetype 光栅化 -> OpenGL 上屏
+```
 
-2. **存档缓冲区 API 缺实现**：`PGBufferCreate` / `PGBufferDelete` / `MEMSET` /
-   `MEMCPY` / `MEMGETNUM` / `MEMGETSTR` / `MEMMODESIZE` 等（见《PGM指令表v0.7.txt》
-   的"系统状态"段）。`amp_pubload` / `amp_pubsave` 依赖它们。
+300 帧、0 错误。此时只剩 2 个未实现的桩（`CacheImageLoad` / `CacheClear`），
+且都已用别名实现。
 
-解决后继续往下的顺序大致是：消息框与文本渲染（`SpeakScene`）→ 字体真实绘制
-→ `EventScene` 的对话推进 → 存档。
+## 下一步
+
+1. **消息框与背景图没有绘制** —— 目前只有文字，没有 `msgbox01.png` 底板和背景。
+   需要在场景合成里补上 msgbox 的绘制（`SpeakScene` 里靠原生层画）。
+2. **对话推进验证** —— 文本显示后停在等按键状态（这是对的）。已加
+   `PGM_MAC_AUTOKEY=N` 每 N 帧模拟一次确认键用于自动化推进，但按键到推进的
+   状态机还没完全验证。
+3. **中文字形** —— `first.ev` 第 10 行 `text("[c=FF0000]红[/c][c=00FF00]绿[/c]...")`
+   用的 GBK 双字节，尚未在画面上确认。
+4. 存档读写（`PGMSAVEDATA` + `amp_pubsave`/`amp_pubload`）、音频（CoreAudio）。
 
 ## 调试开关
 
