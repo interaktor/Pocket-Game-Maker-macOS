@@ -385,12 +385,6 @@ FIXUP_PATCHES = [
      b"#elif defined __linux__ || defined NGE_IPHONE || defined __APPLE__\n#include <unistd.h>",
      1),
 
-    # nge_graphics.c 需要 macOS 后端的原型
-    ("src/nge_graphics.c",
-     b"#include <OpenGL/gl.h>\n\n#elif defined NGE_WIN || defined NGE_LINUX\n#include <GL/glew.h>",
-     b"#include <OpenGL/gl.h>\n#include \"mac/nge_mac.h\"\n\n#elif defined NGE_WIN || defined NGE_LINUX\n#include <GL/glew.h>",
-     1),
-
     # nge_package_zip.c 依赖 minizip 的 unzip.h；PGM 用的是自己的封包格式，
     # macOS 构建里直接排除该模块（CMake 侧处理），此处无需改源码。
 ]
@@ -450,29 +444,14 @@ UPSTREAM_BUGS = [
 PATCHES.extend(UPSTREAM_BUGS)
 
 # =====================================================================
-# 平台检测修复：macOS 上 TARGET_OS_IPHONE 被定义成 0，
-# 而 "defined TARGET_OS_IPHONE" 判断的是有没有定义 -> 误判成 iOS
+# 平台检测修复（已直接写入 include/nge_platform.h，不再由脚本应用）
+#
+# macOS 上 <TargetConditionals.h> 会把 TARGET_OS_IPHONE 定义成 0，而
+# nge_platform.h 原来写的是 "defined TARGET_OS_IPHONE"（判断有没有定义），
+# 于是 macOS 被误判成 NGE_IPHONE。已改为先判 __APPLE__ 再用真值区分。
+# 因为这段是带中文注释的多行块，放进字节级替换表容易和已有内容错配，
+# 所以直接固化在头文件里，脚本不再处理。
 # =====================================================================
-PLATFORM_FIX_OLD = (b"#elif defined TARGET_OS_IPHONE || defined TARGET_IPHONE_SIMULATOR\n"
-                    b"#define NGE_IPHONE\n")
-PLATFORM_FIX_NEW = (
-    b"#elif defined __APPLE__\n"
-    b"/* PGM-Mac: on macOS <TargetConditionals.h> defines TARGET_OS_IPHONE as 0.\n"
-    b"   'defined TARGET_OS_IPHONE' tests for definition, not value, so macOS\n"
-    b"   was misdetected as NGE_IPHONE and pulled in the GLES/iOS code paths.\n"
-    b"   Check __APPLE__ first, then use the real TargetConditionals value. */\n"
-    b"#include <TargetConditionals.h>\n"
-    b"#if defined TARGET_OS_IPHONE && TARGET_OS_IPHONE\n"
-    b"#define NGE_IPHONE\n"
-    b"#else\n"
-    b"#define NGE_MAC\n"
-    b"#endif\n"
-    b"#elif defined TARGET_OS_IPHONE || defined TARGET_IPHONE_SIMULATOR\n"
-    b"#define NGE_IPHONE\n"
-)
-PATCHES.append(("include/nge_platform.h", PLATFORM_FIX_OLD, PLATFORM_FIX_NEW, 1))
-PATCHES.append(("include/nge_platform.h",
-                b"#elif defined __APPLE__\n#define NGE_MAC\n", b"", 1))
 
 
 def main():
