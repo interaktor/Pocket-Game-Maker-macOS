@@ -630,6 +630,15 @@ int pgm_gfx_start(void)
 	pgm_log("视频: %dx%d full=%d \"%s\"\n", w, h, full, name);
 
 	NGE_SetScreenContext(name, w, h, bpp, full);
+	/*
+	 * 音频目前只初始化视频。
+	 *
+	 * 音频后端（coolaudio/nge_audio_mac.m，基于 AVAudioPlayer）已经写好并
+	 * 能编译，但运行时会崩：`api_SoundVolume` 读到的 audio_play_t 里
+	 * volume 是个空函数指针，说明拿到的对象不是 mac_audio —— 也就是
+	 * SoundCreate 走的不是 src/pgm_audio.c 的实现。待查清符号覆盖顺序后
+	 * 再打开 INIT_AUDIO。详见 docs/HOST-STATUS.md。
+	 */
 	NGE_Init(INIT_VIDEO);
 	InitInput(NULL, NULL, 0);
 	InitMouse(NULL, NULL);

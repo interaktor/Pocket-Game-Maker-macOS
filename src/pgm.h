@@ -85,6 +85,9 @@ int  pgm_pack_open(const char *path);          /* 返回句柄索引，失败 <0
 int  pgm_pack_read(int h, const char *name, char **data, size_t *size);
 void pgm_pack_close_all(void);
 
+/* ---- 音频 ---- */
+void pgm_audio_register(lua_State *L);
+
 /* ---- 输入回调桥接 ---- */
 int pgm_api_control_init(lua_State *L);
 int pgm_api_touch_init(lua_State *L);

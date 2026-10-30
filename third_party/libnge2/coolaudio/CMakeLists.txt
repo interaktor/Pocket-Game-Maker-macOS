@@ -1,4 +1,8 @@
 project(coolaudio C CXX)
+
+if(APPLE)
+  enable_language(OBJC)
+endif()
 set(COOLAUDIO_SRCS)
 set(COOLAUDIO_LIBS)
 set(COOLAUDIO_VERSION 1.1)
@@ -34,9 +38,9 @@ elseif(LINUX)
 	nge_audio_linux.c)
   add_package(GSTREAMER COOLAUDIO_LIBS)
 elseif(APPLE)
-  # PGM-Mac: placeholder backend (real CoreAudio impl in P4)
+  # PGM-Mac: CoreAudio backend via AVFoundation (mp3/wav/aac; no OGG)
   list(APPEND COOLAUDIO_SRCS
-	nge_audio_mac.c)
+	nge_audio_mac.m)
 endif()
 
 if(PSP)

@@ -86,7 +86,7 @@ cc -o "$BUILD/p1_smoke" "$ROOT/tests/p1_smoke.c" \
 	-L "$BUILD/lib" -L "$PREFIX/lib" \
 	-l"nge2$LIB_SUFFIX" -l"coolaudio$LIB_SUFFIX" \
 	-lpng -ljpeg -lgif -lfreetype -lz \
-	-framework Cocoa -framework OpenGL
+	-framework Cocoa -framework OpenGL -framework AVFoundation
 
 # ---- Lua 5.1.4 -----------------------------------------------------------
 LUA_SRC="$ROOT/third_party/lua-5.1.4/src"
@@ -101,6 +101,10 @@ if [ ! -f "$BUILD/lib/liblua5.1.a" ]; then
 fi
 
 # ---- PGM 宿主 ------------------------------------------------------------
+# 注意：src/pgm_audio.c 暂不纳入构建。它把 SoundCreate 覆盖成返回
+# AVAudioPlayer 对象，但运行时 api_SoundVolume 会调到空函数指针而崩溃
+# （详见 docs/HOST-STATUS.md 与 third_party/libnge2/coolaudio/nge_audio_mac.m）。
+# 音频修好后再把它加回下面的源文件列表。
 echo ">> 构建 PGM 宿主"
 cc -o "$BUILD/pgm-mac" \
 	"$ROOT/src/pgm_main.c" \
@@ -121,7 +125,7 @@ cc -o "$BUILD/pgm-mac" \
 	"$BUILD/lib/libnge2$LIB_SUFFIX.a" "$BUILD/lib/liblua5.1.a" \
 	-L "$BUILD/lib" -L "$PREFIX/lib" \
 	-l"coolaudio$LIB_SUFFIX" -lpng -ljpeg -lgif -lfreetype -lz \
-	-framework Cocoa -framework OpenGL -lm
+	-framework Cocoa -framework OpenGL -framework AVFoundation -lm
 
 echo
 echo "构建完成。验收测试："

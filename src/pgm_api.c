@@ -347,6 +347,7 @@ void pgm_register_api(lua_State *L)
 	pgm_mem_register(L);
 	pgm_dialog_register(L);
 	pgm_effect_register(L);
+	/* pgm_audio_register 暂不调用：见 scripts/build.sh 里的说明 */
 
 	/* --- 4. 有确定数值的常量 --- */
 	reg_int(L, "PGM_QUIT",   PGM_ST_QUIT);

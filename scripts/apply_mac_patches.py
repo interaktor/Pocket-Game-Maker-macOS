@@ -272,73 +272,12 @@ void InitGraphics()
 CRLF = b"\r\n"
 
 CMAKE_PATCHES = [
-    # src/ 加入头文件搜索路径（src/charsets/*.h 里有 #include "charsets/gb2312.h"）
-    ("CMakeLists.txt",
-     b"include_directories(${CMAKE_BINARY_DIR}/include)" + CRLF,
-     b"include_directories(${CMAKE_BINARY_DIR}/include)" + CRLF + CRLF +
-     b"# PGM-Mac: src/charsets/*.h include their siblings as " + b'"charsets/xxx.h",' + CRLF +
-     b"# so src/ itself has to be on the include path." + CRLF +
-     b"include_directories(${CMAKE_SOURCE_DIR}/src)" + CRLF,
-     1),
-
-    # macOS 源文件 + 系统框架
-    ("CMakeLists.txt",
-     b"list(APPEND NGE2_LIBS ${NGE2_DEP_LIBS} ${UNZIP_LIBRARIES})" + CRLF,
-     b"#----=={ PGM-Mac: macOS (NGE_MAC) backend }==----" + CRLF +
-     b"if(APPLE)" + CRLF +
-     b"  enable_language(OBJC)" + CRLF +
-     b"  list(APPEND NGE2_SRCS" + CRLF +
-     b"\tsrc/mac/nge_mac_window.m" + CRLF +
-     b"\t)" + CRLF +
-     b"  # Apple deprecated OpenGL in 10.14 but it still works; silence the noise." + CRLF +
-     b"  add_definitions(-DGL_SILENCE_DEPRECATION)" + CRLF +
-     b"  find_library(COCOA_LIBRARY Cocoa REQUIRED)" + CRLF +
-     b"  find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)" + CRLF +
-     b"  list(APPEND NGE2_LIBS ${COCOA_LIBRARY} ${OPENGL_FRAMEWORK})" + CRLF +
-     b"  # nge_mac_window.m is written in manual-retain-release style." + CRLF +
-     b"  set_source_files_properties(src/mac/nge_mac_window.m PROPERTIES" + CRLF +
-     b"\tCOMPILE_FLAGS \"-fno-objc-arc\")" + CRLF +
-     b"endif()" + CRLF + CRLF +
-     b"list(APPEND NGE2_LIBS ${NGE2_DEP_LIBS} ${UNZIP_LIBRARIES})" + CRLF,
-     1),
-
-    # macOS 上没有 libg；libc 由 libSystem 提供，C++ 用 libc++
-    ("CMakeLists.txt",
-     b"else()" + CRLF +
-     b"  list(APPEND NGE2_LIBS g)" + CRLF +
-     b"  if(NOT PSP)" + CRLF +
-     b"\tlist(APPEND NGE2_LIBS c) # psp contains newlib's libc" + CRLF +
-     b"  endif()" + CRLF +
-     b"  list(APPEND NGE2_LIBS stdc++)" + CRLF +
-     b"endif()" + CRLF,
-     b"else()" + CRLF +
-     b"  if(APPLE)" + CRLF +
-     b"\t# macOS: libSystem provides libc and clang links libc++ itself;" + CRLF +
-     b"\t# there is no libg on Apple platforms." + CRLF +
-     b"  else()" + CRLF +
-     b"\tlist(APPEND NGE2_LIBS g)" + CRLF +
-     b"\tif(NOT PSP)" + CRLF +
-     b"\t  list(APPEND NGE2_LIBS c) # psp contains newlib's libc" + CRLF +
-     b"\tendif()" + CRLF +
-     b"\tlist(APPEND NGE2_LIBS stdc++)" + CRLF +
-     b"  endif()" + CRLF +
-     b"endif()" + CRLF,
-     1),
-
-    # coolaudio：macOS 分支
-    ("coolaudio/CMakeLists.txt",
-     b"elseif(LINUX)\n  list(APPEND COOLAUDIO_SRCS\n\tnge_audio_linux.c)\n  add_package(GSTREAMER COOLAUDIO_LIBS)\nendif()",
-     b"elseif(LINUX)\n  list(APPEND COOLAUDIO_SRCS\n\tnge_audio_linux.c)\n  add_package(GSTREAMER COOLAUDIO_LIBS)\nelseif(APPLE)\n  # PGM-Mac: placeholder backend (real CoreAudio impl in P4)\n  list(APPEND COOLAUDIO_SRCS\n\tnge_audio_mac.c)\nendif()",
-     1),
-    ("coolaudio/CMakeLists.txt",
-     b"elseif(PSP OR LINUX)\n  add_library(coolaudio STATIC ${COOLAUDIO_SRCS})",
-     b"elseif(PSP OR LINUX OR APPLE)\n  add_library(coolaudio STATIC ${COOLAUDIO_SRCS})",
-     1),
-    ("coolaudio/CMakeLists.txt",
-     b"if(WIN32 OR PSP OR LINUX)\n  set(COOLAUDIO_LIBS ${COOLAUDIO_LIBS} PARENT_SCOPE)",
-     b"if(WIN32 OR PSP OR LINUX OR APPLE)\n  set(COOLAUDIO_LIBS ${COOLAUDIO_LIBS} PARENT_SCOPE)",
-     1),
+    # 说明：CMakeLists.txt 的 macOS 改动（OBJC 源文件、Cocoa/OpenGL/AVFoundation
+    # 框架、跳过 nge_package_zip）已直接固化在 vendored 的三方树里，不再由脚本
+    # 用字符串替换施加 —— 因为多个补丁作用于同一段文本时，彼此的幂等判定会互相
+    # 破坏，导致每次运行都重复插入一整块。这里保持空表。
 ]
+
 
 PATCHES.extend(CMAKE_PATCHES)
 
@@ -452,6 +391,18 @@ PATCHES.extend(UPSTREAM_BUGS)
 # 因为这段是带中文注释的多行块，放进字节级替换表容易和已有内容错配，
 # 所以直接固化在头文件里，脚本不再处理。
 # =====================================================================
+
+# Objective-C 的 .m 文件里 objc/objc.h 已定义 BOOL，libnge2 的 typedef 会冲突
+OBJC_BOOL_FIX = [
+    ("include/nge_common.h",
+     b"\t#ifdef _MSC_VER\n\ttypedef int BOOL;\n\t#else\n\ttypedef uint8_t BOOL;\n\t#endif\n",
+     b"\t#ifdef _MSC_VER\n\ttypedef int BOOL;\n"
+     b"\t#elif defined(__OBJC__)\n"
+     b"\t/* Objective-C: objc/objc.h already defines BOOL; redefining conflicts */\n"
+     b"\t#else\n\ttypedef uint8_t BOOL;\n\t#endif\n",
+     1),
+]
+PATCHES.extend(OBJC_BOOL_FIX)
 
 
 def main():

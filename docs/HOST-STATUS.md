@@ -186,6 +186,35 @@ nge_mac 事件队列 -> nge_input.c InputProc -> btn_down()
 文件大小、头部内容、字段宽度全部吻合，说明 `MEM*` 系列与 `WriteBuffer` 是对的。
 存档目录是 `<游戏根目录>/PGMSAVEDATA/<GAME_NAME>SYS/`。
 
+## 音频：已写后端但暂时禁用（会崩，待修）
+
+`third_party/libnge2/coolaudio/nge_audio_mac.m` 用 **AVAudioPlayer** 实现了
+`audio_play_t` 虚表（mp3/wav/aac；不支持 ogg），`src/pgm_audio.c` 负责把它接到
+PGM 的 `mp3load/mp3play/SoundCreate/SoundLoad/...` 上。两者都能编译。
+
+**但运行时崩溃**，回溯很清楚：
+
+```
+frame #0: 0x0                                          <- 调到空指针
+frame #1: pgm-mac`api_SoundVolume + 108
+frame #2: luaD_precall
+```
+
+`api_SoundVolume` 里 `p->volume(p, v)` 的 `volume` 是 NULL —— 说明
+`to_sound()` 拿到的 lightuserdata **不是** `make_player()` 返回的 `mac_audio`
+对象。也就是说 `SoundCreate` 实际执行的不是 `src/pgm_audio.c` 的实现。
+
+下一步排查方向（按优先级）：
+1. 在 `pgm_audio_register` 末尾打印 `SoundCreate` 的函数地址，确认它确实被注册
+   且没有被后续的任何注册步骤（或 Lua 定义）覆盖
+2. 检查 `audio_interface.h` 在 `.c` 与 `.m` 两个编译单元里是否展开成同一布局
+   （理论上同头文件应一致，但值得用 `sizeof` 打出来核对）
+3. 若短期修不好，可以先只接 `mp3*` 系列（BGM/语音走这条），把
+   `SoundCreate/Load/Play` 保留为桩，避免空指针
+
+目前 `build.sh` 与 `pgm_api.c` 都**没有**纳入 `pgm_audio.c`，`NGE_Init` 也只传
+`INIT_VIDEO`，因此不会崩。文件留着，修好后加回即可。
+
 ## 下一步
 
 1. **消息框与背景图没有绘制** —— 目前只有文字，没有 `msgbox01.png` 底板和背景。

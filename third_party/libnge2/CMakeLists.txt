@@ -117,25 +117,12 @@ if(APPLE)
   list(APPEND NGE2_SRCS
 	src/mac/nge_mac_window.m
 	)
-  find_library(COCOA_LIBRARY Cocoa REQUIRED)
-  find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
-  list(APPEND NGE2_LIBS ${COCOA_LIBRARY} ${OPENGL_FRAMEWORK})
-  # nge_mac_window.m is written in manual-retain-release style.
-  set_source_files_properties(src/mac/nge_mac_window.m PROPERTIES
-	COMPILE_FLAGS "-fno-objc-arc")
-endif()
-
-#----=={ PGM-Mac: macOS (NGE_MAC) backend }==----
-if(APPLE)
-  enable_language(OBJC)
-  list(APPEND NGE2_SRCS
-	src/mac/nge_mac_window.m
-	)
   # Apple deprecated OpenGL in 10.14 but it still works; silence the noise.
   add_definitions(-DGL_SILENCE_DEPRECATION)
   find_library(COCOA_LIBRARY Cocoa REQUIRED)
   find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
-  list(APPEND NGE2_LIBS ${COCOA_LIBRARY} ${OPENGL_FRAMEWORK})
+  find_library(AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)
+  list(APPEND NGE2_LIBS ${COCOA_LIBRARY} ${OPENGL_FRAMEWORK} ${AVFOUNDATION_FRAMEWORK})
   # nge_mac_window.m is written in manual-retain-release style.
   set_source_files_properties(src/mac/nge_mac_window.m PROPERTIES
 	COMPILE_FLAGS "-fno-objc-arc")

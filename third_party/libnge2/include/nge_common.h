@@ -63,6 +63,8 @@
 #else
 	#ifdef _MSC_VER
 	typedef int BOOL;
+	#elif defined(__OBJC__)
+	/* Objective-C: objc/objc.h already defines BOOL; redefining conflicts */
 	#else
 	typedef uint8_t BOOL;
 	#endif
