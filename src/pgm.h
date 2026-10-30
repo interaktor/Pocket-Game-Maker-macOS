@@ -85,6 +85,14 @@ int  pgm_pack_open(const char *path);          /* 返回句柄索引，失败 <0
 int  pgm_pack_read(int h, const char *name, char **data, size_t *size);
 void pgm_pack_close_all(void);
 
+/* ---- 事件脚本解释器 ---- */
+void pgm_escript_register(lua_State *L);
+
+/* ---- 图形 / 字体 / 计时器 ---- */
+void pgm_gfx_register(lua_State *L);
+int  pgm_gfx_start(void);              /* 用 Lua 的 PGM_SCREEN_* 初始化视频 */
+void pgm_gfx_capture(const char *png); /* 抓一帧存 PNG（验证用） */
+
 /* ---- Lua 侧 ---- */
 void pgm_lua_init(void);
 void pgm_register_api(lua_State *L);

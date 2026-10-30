@@ -24,6 +24,9 @@
 #include <unistd.h>
 
 #include "pgm.h"
+#include "nge.h"
+#include "nge_graphics.h"
+#include "nge_input.h"
 
 static int is_dir(const char *p)
 {
@@ -177,7 +180,42 @@ int main(int argc, char *argv[])
 			(void)chdir(cwd);
 	}
 
-	pgm_log("\n=== P2 阶段结束 (state=%d, quit=%d) ===\n",
-			g_pgm.state, g_pgm.quit);
+	/* ---- 进入主循环：engine.sys 末尾会 PGSetState(PGM_LOOP) ---- */
+	if (g_pgm.state == PGM_ST_LOOP && !g_pgm.quit) {
+		const char *s_frames = getenv("PGM_MAC_FRAMES");
+		const char *s_shot = getenv("PGM_MAC_SHOT");
+		int max_frames = s_frames ? atoi(s_frames) : 0;
+		int i;
+		lua_State *L = g_pgm.L;
+
+		pgm_gfx_start();
+
+		pgm_log("进入主循环 (PGLoop)，帧数上限=%d\n",
+				max_frames > 0 ? max_frames : 0);
+
+		for (i = 0; !g_pgm.quit && (max_frames <= 0 || i < max_frames); i++) {
+			InputProc();
+
+			lua_getglobal(L, "PGLoop");
+			if (!lua_isfunction(L, -1)) {
+				pgm_log("!! PGLoop 未定义\n");
+				lua_pop(L, 1);
+				break;
+			}
+			if (lua_pcall(L, 0, 0, 0) != 0) {
+				const char *msg = lua_tostring(L, -1);
+				pgm_log("\n!! PGLoop 第 %d 帧出错: %s\n", i,
+						msg ? msg : "(no message)");
+				lua_pop(L, 1);
+				break;
+			}
+			LimitFps(60);
+		}
+
+		pgm_log("主循环结束，共 %d 帧\n", i);
+		pgm_gfx_capture(s_shot);
+	}
+
+	pgm_log("\n=== 结束 (state=%d, quit=%d) ===\n", g_pgm.state, g_pgm.quit);
 	return 0;
 }

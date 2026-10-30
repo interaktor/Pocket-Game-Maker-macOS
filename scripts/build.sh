@@ -107,15 +107,21 @@ cc -o "$BUILD/pgm-mac" \
 	"$ROOT/src/pgm_lua.c" \
 	"$ROOT/src/pgm_pack.c" \
 	"$ROOT/src/pgm_api.c" \
+	"$ROOT/src/pgm_gfx.c" \
+	"$ROOT/src/pgm_escript.c" \
 	-I "$LUA_SRC" \
 	-I "$ROOT/third_party/libnge2/include" \
 	-I "$PREFIX/include" \
 	-DLUA_USE_MACOSX -DGL_SILENCE_DEPRECATION \
 	-mmacosx-version-min="$OSX_MIN" \
-	"$BUILD/lib/liblua5.1.a" -lm
+	"$BUILD/lib/libnge2$LIB_SUFFIX.a" "$BUILD/lib/liblua5.1.a" \
+	-L "$BUILD/lib" -L "$PREFIX/lib" \
+	-l"coolaudio$LIB_SUFFIX" -lpng -ljpeg -lgif -lfreetype -lz \
+	-framework Cocoa -framework OpenGL -lm
 
 echo
 echo "构建完成。验收测试："
 echo "  $BUILD/p1_smoke 20 /tmp/p1_smoke.png     # P1: 渲染"
 echo "  ./scripts/make-test-game.sh              # 组装测试游戏目录"
-echo "  $BUILD/pgm-mac build/testgame            # P2: 加载 PGM 脚本框架"
+echo "  $BUILD/pgm-mac build/testgame            # 加载 PGM 脚本框架"
+echo "  PGM_MAC_FRAMES=60 PGM_MAC_SHOT=/tmp/g.png $BUILD/pgm-mac ../PGM-CE  # 跑主循环并截图"

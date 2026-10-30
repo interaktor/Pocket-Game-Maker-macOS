@@ -279,6 +279,14 @@ static int api_ControlInit(lua_State *L)
 	return 0;
 }
 
+/* InputProc() —— Lua 侧（ClassBase.lua:97）会调用，转给 nge2 的事件轮询 */
+static int api_InputProc(lua_State *L)
+{
+	(void)L;
+	InputProc();
+	return 0;
+}
+
 static int api_TouchInit(lua_State *L)
 {
 	pgm_log("[api ] TouchInit(%s, %s, %s)\n",
@@ -295,6 +303,10 @@ struct real_api {
 	const char *name;
 	lua_CFunction fn;
 };
+
+/* 定义在文件末尾的场景合成函数 */
+static int api_am_scene_render(lua_State *L);
+static int api_am_scene_update(lua_State *L);
 
 void pgm_register_api(lua_State *L)
 {
@@ -315,6 +327,9 @@ void pgm_register_api(lua_State *L)
 		{ "PGMShutDown",          api_PGMShutDown },
 		{ "ControlInit",          api_ControlInit },
 		{ "TouchInit",            api_TouchInit },
+		{ "InputProc",            api_InputProc },
+		{ "am_scene_render",      api_am_scene_render },
+		{ "am_scene_update",      api_am_scene_update },
 	};
 	int i;
 
@@ -331,6 +346,10 @@ void pgm_register_api(lua_State *L)
 		lua_pushcfunction(L, reals[i].fn);
 		lua_setglobal(L, reals[i].name);
 	}
+
+	/* --- 3.5 图形 / 字体 / 计时器 / 事件脚本真实实现 --- */
+	pgm_gfx_register(L);
+	pgm_escript_register(L);
 
 	/* --- 4. 有确定数值的常量 --- */
 	reg_int(L, "PGM_QUIT",   PGM_ST_QUIT);
@@ -360,4 +379,77 @@ void pgm_register_api(lua_State *L)
 	reg_int(L, "IMG_4444", DISPLAY_PIXEL_FORMAT_4444);
 	reg_int(L, "IMG_5551", DISPLAY_PIXEL_FORMAT_5551);
 	reg_int(L, "IMG_565",  DISPLAY_PIXEL_FORMAT_565);
+}
+
+/* ================================================================== */
+/* am_scene_render / am_scene_update —— PGM 的场景合成层              */
+/*                                                                    */
+/* am_scene 里 bg / texfg / fg / ani 四组对象（FGBase / TexFgBase /    */
+/* ANIBase）各自实现了 render() 与 update()，所以这里只需要按层序把它们 */
+/* 依次调一遍。层序与 PGM 的绘制顺序一致：背景 -> 纹理立绘 -> 普通立绘 -> */
+/* 动画。                                                             */
+/* ================================================================== */
+
+static const char *PGM_SCENE_LAYERS[] = { "bg", "texfg", "fg", "ani", NULL };
+
+static int call_obj_method(lua_State *L, const char *method)
+{
+	if (!lua_istable(L, -1))
+		return 0;
+	lua_getfield(L, -1, method);
+	if (!lua_isfunction(L, -1)) {
+		lua_pop(L, 1);
+		return 0;
+	}
+	/* self 作为第一个参数 */
+	lua_pushvalue(L, -2);
+	if (lua_pcall(L, 1, 0, 0) != 0) {
+		const char *msg = lua_tostring(L, -1);
+		pgm_log("!! %s() 出错: %s\n", method, msg ? msg : "?");
+		lua_pop(L, 1);
+		return 0;
+	}
+	return 1;
+}
+
+static int scene_walk(lua_State *L, const char *method)
+{
+	int gi;
+
+	lua_getglobal(L, "am_scene");
+	if (!lua_istable(L, -1)) {
+		lua_pop(L, 1);
+		return 0;
+	}
+
+	for (gi = 0; PGM_SCENE_LAYERS[gi]; gi++) {
+		int i, n;
+		lua_getfield(L, -1, PGM_SCENE_LAYERS[gi]);
+		if (!lua_istable(L, -1)) {
+			lua_pop(L, 1);
+			continue;
+		}
+		n = (int)lua_objlen(L, -1);
+		for (i = 1; i <= n; i++) {
+			lua_rawgeti(L, -1, i);          /* obj */
+			if (lua_istable(L, -1))
+				call_obj_method(L, method);
+			lua_pop(L, 1);
+		}
+		lua_pop(L, 1);                       /* 组 */
+	}
+	lua_pop(L, 1);                           /* am_scene */
+	return 0;
+}
+
+static int api_am_scene_render(lua_State *L)
+{
+	scene_walk(L, "render");
+	return 0;
+}
+
+static int api_am_scene_update(lua_State *L)
+{
+	scene_walk(L, "update");
+	return 0;
 }
