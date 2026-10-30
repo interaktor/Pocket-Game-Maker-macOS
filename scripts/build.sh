@@ -88,6 +88,34 @@ cc -o "$BUILD/p1_smoke" "$ROOT/tests/p1_smoke.c" \
 	-lpng -ljpeg -lgif -lfreetype -lz \
 	-framework Cocoa -framework OpenGL
 
+# ---- Lua 5.1.4 -----------------------------------------------------------
+LUA_SRC="$ROOT/third_party/lua-5.1.4/src"
+if [ ! -f "$BUILD/lib/liblua5.1.a" ]; then
+	echo ">> 构建 Lua 5.1.4"
+	mkdir -p "$BUILD/luaobj"
+	( cd "$LUA_SRC" && for f in *.c; do
+		cc -c -O2 -DLUA_USE_MACOSX -I. "$f" -o "$BUILD/luaobj/${f%.c}.o" || exit 1
+	  done )
+	ar rcs "$BUILD/lib/liblua5.1.a" "$BUILD"/luaobj/*.o
+	rm -rf "$BUILD/luaobj"
+fi
+
+# ---- PGM 宿主 ------------------------------------------------------------
+echo ">> 构建 PGM 宿主"
+cc -o "$BUILD/pgm-mac" \
+	"$ROOT/src/pgm_main.c" \
+	"$ROOT/src/pgm_lua.c" \
+	"$ROOT/src/pgm_pack.c" \
+	"$ROOT/src/pgm_api.c" \
+	-I "$LUA_SRC" \
+	-I "$ROOT/third_party/libnge2/include" \
+	-I "$PREFIX/include" \
+	-DLUA_USE_MACOSX -DGL_SILENCE_DEPRECATION \
+	-mmacosx-version-min="$OSX_MIN" \
+	"$BUILD/lib/liblua5.1.a" -lm
+
 echo
-echo "构建完成。运行验收测试："
-echo "  $BUILD/p1_smoke 20 /tmp/p1_smoke.png"
+echo "构建完成。验收测试："
+echo "  $BUILD/p1_smoke 20 /tmp/p1_smoke.png     # P1: 渲染"
+echo "  ./scripts/make-test-game.sh              # 组装测试游戏目录"
+echo "  $BUILD/pgm-mac build/testgame            # P2: 加载 PGM 脚本框架"

@@ -60,14 +60,31 @@ PGM 是两层结构，移植的难点完全在第二层：
 （四色分区、白色边框、位于 (40,40) 的白色方块、左上→右下黄色对角线、
 y=200 处洋红方块 —— 全部落在预期位置）
 
+### ✅ P2 — PGM 的 Lua 框架在宿主里跑起来了
+
+* 嵌入 **Lua 5.1.4**，与 PGM 原作版本一致
+* 完整链路打通：`bin/pgm.ini` → `PGSetScript("engine.sys")` →
+  `PGSetState(PGM_SCRIPT)` → `engine.sys` → `PackCreate()` ×2 →
+  `include("lg_init.lua")` → 逐层 include 出 **44 个脚本**的整个框架
+* **零 Lua 错误**，最后 `engine.sys` 自己调用 `PGSetState(PGM_LOOP)` 进入主循环
+* 注册了 **153 个原生 API**：先来自《PGM指令表v0.7.txt》的 150 个接口，
+  再用脚本扫描补上文档漏掉的 100 个（合并去重后 153）
+* 未实现的接口注册成**带调用位置的追踪桩**，输出形如：
+
+  ```
+  [stub] SoundCreate (1 args) <- base.lua:431
+  [stub] FontCreate  (2 args) <- globals.lua:72
+  ```
+
+  这让"还差什么"一目了然，可以按调用频率逐个补实现
+
 ### ⏳ 待做
 
-| 阶段 | 目标 |
-|---|---|
-| P2 | 嵌入 Lua 5.1.4，跑通 `engine.sys` → `lg_init.lua` 初始化链 |
-| P3 | 解码 `gmcode.bin` / `gmdata.bin` 封包 + 图形 API，显示 CE 标题画面 |
-| P4 | 事件脚本、对话、存档、音频（CoreAudio）、字体，CE 示例游戏可通关 |
-| P5 | `.app` 打包、拖放游戏目录、中文文档 |
+| 阶段 | 目标 | 阻塞 |
+|---|---|---|
+| P3 | 解码 `gmcode.bin` / `gmdata.bin` 的**载荷编码** + 图形 API，显示标题画面 | 载荷编码未解，见 [docs/PACK-FORMAT.md](docs/PACK-FORMAT.md) |
+| P4 | 事件脚本、对话、存档、音频（CoreAudio）、字体，CE 示例游戏可通关 | — |
+| P5 | `.app` 打包、拖放游戏目录、中文文档 | — |
 
 ## 构建
 
