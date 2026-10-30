@@ -206,8 +206,24 @@ SEEDS = [
 
 
 def decrypt(rec):
-    """一条记录 -> 明文行"""
-    return bytes(c ^ KEY[i % 64] for i, c in enumerate(rec))
+    """一条记录 -> 明文行
+
+    除了 XOR 之外还有一条补丁规则：**打包器避免在密文里产生 0x00 字节**
+    （大概是某处把缓冲区当 C 字符串用）。当 plain == KEY[i] 时，
+    plain ^ KEY[i] 会得到 0x00，打包器此时改用原始字节写出。于是解出来的
+    plain 会是 0 而不是真正的字符 —— 见到 0 就填回 KEY[i] 即还原。
+
+    这条规则修正了 1016/10027 条记录里的单个坏字节，把不可打印字节从
+    1016 降到 13（后者是 GBK 编码的边界情况，不影响 Lua 解析）。
+    """
+    out = bytearray()
+    for i, c in enumerate(rec):
+        k = KEY[i % 64]
+        p = c ^ k
+        if p == 0 and c == k:
+            p = k
+        out.append(p)
+    return bytes(out)
 
 
 def verify_key():

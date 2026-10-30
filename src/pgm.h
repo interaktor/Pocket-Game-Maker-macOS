@@ -11,6 +11,8 @@
 #ifndef _PGM_H
 #define _PGM_H
 
+#include <stdint.h>
+#include <stddef.h>
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
@@ -28,12 +30,26 @@ enum {
 enum {
 	PGM_PACK_NONE = 0,
 	PGM_PACK_DIR,   /* 明文的 src/ 目录（开发期 / 未打包的游戏） */
-	PGM_PACK_BIN    /* gmcode.bin / gmdata.bin 二进制封包 */
+	PGM_PACK_BIN,   /* gmcode.bin —— 脚本包：按行存储 + 加密 */
+	PGM_PACK_RES    /* gmdata.bin —— 资源包：整文件原样存储，不加密 */
 };
+
+typedef struct pgm_dir_entry {
+	char     name[128];
+	uint32_t off;
+	uint32_t size;
+	int      valid;
+} pgm_dir_entry;
 
 typedef struct pgm_pack {
 	int  kind;
 	char path[1024];
+	/* PGM_PACK_BIN：整个封包常驻内存 + 目录 */
+	unsigned char  *data;
+	size_t          data_size;
+	pgm_dir_entry  *ents;
+	int             nents;
+	int             stride;   /* 目录项步长：脚本包 128 / 资源包 124 */
 } pgm_pack;
 
 #define PGM_MAX_PACK 8
