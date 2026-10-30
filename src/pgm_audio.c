@@ -268,6 +268,22 @@ static int api_SoundVolume(lua_State *L)
 	return 0;
 }
 
+/* SoundEos(h) —— 是否播完。SoundBase:IsFinish() 就是靠它判断的 */
+static int api_SoundEos(lua_State *L)
+{
+	audio_play_p p = to_sound(L, 1);
+	lua_pushboolean(L, p ? p->iseof(p) : 1);
+	return 1;
+}
+
+static int api_SoundRewind(lua_State *L)
+{
+	audio_play_p p = to_sound(L, 1);
+	if (p)
+		p->rewind(p);
+	return 0;
+}
+
 /* 只停止 + 摘除登记，不 free：Lua 侧可能还留着句柄 */
 static int api_SoundUnload(lua_State *L)
 {
@@ -304,6 +320,9 @@ void pgm_audio_register(lua_State *L)
 		{ "SoundResume",   api_SoundResume },
 		{ "SoundVolume",   api_SoundVolume },
 		{ "SoundUnload",   api_SoundUnload },
+		{ "SoundDelete",   api_SoundUnload },   /* 语义等同：停播 + 失效 */
+		{ "SoundEos",      api_SoundEos },
+		{ "SoundRewind",   api_SoundRewind },
 	};
 	int i;
 	for (i = 0; i < NELEM(api); i++) {

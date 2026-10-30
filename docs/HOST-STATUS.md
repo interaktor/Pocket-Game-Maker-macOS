@@ -244,12 +244,48 @@ mac audio: loaded .../bin/data/sound/test.wav (2.0s)
 > **调试提示**：要在 Release 里也能看日志，需要在 CMake 里额外定义
 > `_DEBUG_STDOUT`，或者直接用 Debug 构建（`./scripts/build.sh Debug`）。
 
+### 音频 API 的真实调用链（重要）
+
+PGM 的音频 API 有**两层**，很多名字在 Lua 里已经被包装过：
+
+```
+mp3isfinish(i)          <- Lua (ampfunctions.lua:338)
+  -> am_sound.mp3[i]:IsFinish()      <- Lua (base.lua:555)
+    -> SoundEos(voice_p)             <- 原生，必须由宿主实现
+```
+
+所以只实现 `mp3isfinish` 是没用的（会被 Lua 定义覆盖）。真正需要实现的原生函数就是
+`base.lua` 里直接调的那 10 个：
+
+```
+SoundCreate  SoundDelete  SoundEos   SoundLoad   SoundPlay
+SoundPause   SoundResume  SoundRewind SoundUnload SoundVolume
+```
+
+`src/pgm_audio.c` 已全部实现（`SoundDelete` 复用 `SoundUnload` 的语义）。
+
+### 播放状态机验证（直接调用原生 API）
+
+用 `.ev` + Lua 的 `print`（走 stdout，不受 Release 裁日志影响）观察到：
+
+```
+A 刚开播      eos = false
+B 约 3.3 秒后 eos = false     <- 2 秒的音应该已经播完，这里仍是 false
+C rewind 后   eos = false
+D unload 后   eos = true      <- 句柄失效，符合预期
+```
+
+`A` 和 `D` 都正确，说明对象生命周期与 `SoundEos` 的判断逻辑是通的。
+`B` 不符合预期，最可能的原因是**本环境没有可用的音频输出设备** ——
+AVAudioPlayer 加载成功（时长都读出来了 2.0s），但没有输出设备时
+`currentTime` 不会推进，所以「播完」永远检测不到。
+
 ### 音频部分仍未验证的
 
-* 实际**出声**没法在这个环境里听，只能确认 AVAudioPlayer 加载成功、时长正确、
-  `play()` 被调用。
+* 实际**出声**：需要有音频输出的机器上手动确认（本环境无输出设备，
+  `currentTime` 不推进）。
 * 不支持 **OGG**（AVFoundation 不解 OGG），`CreateOggPlayer` 返回 NULL。
-* `mp3playtime()` 目前固定返回 0（`audio_play_t` 虚表没有暴露 currentTime）。
+* `mp3playtime()` 固定返回 0（`audio_play_t` 虚表没暴露 currentTime）。
 
 ## 下一步
 
