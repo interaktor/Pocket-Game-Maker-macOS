@@ -101,10 +101,6 @@ if [ ! -f "$BUILD/lib/liblua5.1.a" ]; then
 fi
 
 # ---- PGM 宿主 ------------------------------------------------------------
-# 注意：src/pgm_audio.c 暂不纳入构建。它把 SoundCreate 覆盖成返回
-# AVAudioPlayer 对象，但运行时 api_SoundVolume 会调到空函数指针而崩溃
-# （详见 docs/HOST-STATUS.md 与 third_party/libnge2/coolaudio/nge_audio_mac.m）。
-# 音频修好后再把它加回下面的源文件列表。
 echo ">> 构建 PGM 宿主"
 cc -o "$BUILD/pgm-mac" \
 	"$ROOT/src/pgm_main.c" \
@@ -117,6 +113,7 @@ cc -o "$BUILD/pgm-mac" \
 	"$ROOT/src/pgm_dialog.c" \
 	"$ROOT/src/pgm_effect.c" \
 	"$ROOT/src/pgm_input.c" \
+	"$ROOT/src/pgm_audio.c" \
 	-I "$LUA_SRC" \
 	-I "$ROOT/third_party/libnge2/include" \
 	-I "$PREFIX/include" \

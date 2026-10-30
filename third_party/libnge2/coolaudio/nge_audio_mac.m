@@ -71,6 +71,8 @@ static int ma_load(struct audio_play *This, const char *filename)
 		}
 		[a->player prepareToPlay];
 		[a->player setVolume:norm_volume(a->volume)];
+		nge_log("mac audio: loaded %s (%.1fs)\n", filename,
+				[a->player duration]);
 	}
 	return 0;
 }

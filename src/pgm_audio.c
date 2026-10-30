@@ -25,8 +25,28 @@
 
 #define NELEM(a) ((int)(sizeof(a) / sizeof((a)[0])))
 #define MP3_SLOTS 8
+#define SND_SLOTS 32
 
 static audio_play_p g_mp3[MP3_SLOTS];
+static audio_play_p g_snd[SND_SLOTS];
+
+/*
+ * 句柄校验：Lua 侧可能在校验之后仍然拿着已经 unload 的句柄去调用
+ * （base.lua 的 SoundBase:unload 之后并没有把 voice_p 置空），
+ * 如果直接把对象 free 掉就会 use-after-free 崩在 p->volume 这种地方。
+ * 所以：
+ *   1. 所有音效对象登记在 g_snd[] 里；
+ *   2. SoundUnload 只 stop、并从登记表摘除，**不 free**；
+ *   3. to_sound() 每次都查表，查不到就返回 NULL，调用方自然安全返回。
+ */
+static int snd_registered(audio_play_p p)
+{
+	int i;
+	for (i = 0; i < SND_SLOTS; i++)
+		if (g_snd[i] == p)
+			return i;
+	return -1;
+}
 
 /* 把音频文件名解析成真实路径 */
 static int resolve_audio(const char *name, char *out, size_t outsz)
@@ -160,10 +180,18 @@ static int api_mp3playtime(lua_State *L)
 static int api_SoundCreate(lua_State *L)
 {
 	audio_play_p p = CreateWavPlayer();
+	int i;
+
 	(void)L;
 	if (!p) {
 		lua_pushnil(L);
 		return 1;
+	}
+	for (i = 0; i < SND_SLOTS; i++) {
+		if (!g_snd[i]) {
+			g_snd[i] = p;
+			break;
+		}
 	}
 	lua_pushlightuserdata(L, p);
 	return 1;
@@ -171,9 +199,14 @@ static int api_SoundCreate(lua_State *L)
 
 static audio_play_p to_sound(lua_State *L, int idx)
 {
+	audio_play_p p;
+
 	if (lua_type(L, idx) != LUA_TLIGHTUSERDATA)
 		return NULL;
-	return (audio_play_p)lua_touserdata(L, idx);
+	p = (audio_play_p)lua_touserdata(L, idx);
+	if (!p || snd_registered(p) < 0)
+		return NULL;   /* 已 unload 或不是我们创建的句柄 */
+	return p;
 }
 
 /* SoundLoad(h, filename) | SoundLoad(h, buffer, size) */
@@ -235,12 +268,17 @@ static int api_SoundVolume(lua_State *L)
 	return 0;
 }
 
+/* 只停止 + 摘除登记，不 free：Lua 侧可能还留着句柄 */
 static int api_SoundUnload(lua_State *L)
 {
 	audio_play_p p = to_sound(L, 1);
+	int i;
+
 	if (p) {
-		p->destroy(p);
-		/* 句柄已失效，Lua 侧会置 false */
+		p->stop(p);
+		i = snd_registered(p);
+		if (i >= 0)
+			g_snd[i] = NULL;
 	}
 	return 0;
 }
