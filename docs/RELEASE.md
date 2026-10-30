@@ -24,8 +24,8 @@ open build/PGM.app                  # 双击可运行
 | `scripts/` | 构建/打包/补丁/解包工具（本项目原创） |
 | `tests/` | 渲染验收测试 |
 | `docs/` | 逆向记录、移植笔记、许可证分析、致作者邮件 |
-| `third_party/libnge2/` | NGE2 源码（BSD/GPL，已打 macOS 补丁） |
-| `third_party/lua-5.1.4/` | Lua 源码（MIT） |
+| `engine/third_party/libnge2/` | NGE2 源码（BSD/GPL，已打 macOS 补丁） |
+| `engine/third_party/lua-5.1.4/` | Lua 源码（MIT） |
 
 ## 发布前还需确认
 

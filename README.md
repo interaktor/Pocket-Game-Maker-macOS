@@ -19,11 +19,27 @@ AVG / 视觉小说引擎。国内现存的 PSP 自制移植游戏绝大多数都
 
 它原本只支持 **PSP / Windows / Android**，从来没有 macOS 版本。这个项目补上了这一块。
 
-## 想做个游戏？从这里开始
+## 目录结构
+
+```
+先看这两个：
+  开始.md                  ← 三步上手（中文，最直接）
+  运行游戏.command          ← 双击：编译 + 运行骨架工程
+  做新游戏.command          ← 双击：生成你自己的工程
+
+   starter/                ← 骨架工程，复制它开始做游戏
+   engine/                 ← 引擎本体（不用动）
+      host/                ←   PGM 宿主层，自写 3800 行
+      third_party/         ←   libnge2 + Lua 5.1.4
+   scripts/                ← 构建、打包、生成工程
+   docs/                   ← 文档
+```
+
+## 三步做游戏
 
 ```sh
-./scripts/build.sh Release          # 先构建引擎（只需一次）
-./scripts/new-project.sh 我的游戏    # 生成一个能跑的工程
+./scripts/build.sh Release          # 构建引擎（一次）
+./scripts/new-project.sh 我的游戏    # 生成工程
 cd 我的游戏 && ./run.sh             # 跑起来
 ```
 
@@ -34,9 +50,9 @@ text("你好，世界。")
 textcl()
 ```
 
-改完保存，重新运行就生效 —— **不需要打包，不需要任何 Windows 工具**。
+改完保存、重新运行就生效 —— **不需要打包，不需要任何 Windows 工具，也不用管编码**。
 
-`starter/` 就是那个骨架工程，里面带着一份 `README.md` 逐条讲怎么写台词、放图片、放音乐、做选项。所有重要的东西都在 `src/user/main.ev` 和 `src/files/` 里，其余是框架，不用动。
+`starter/README.md` 逐条讲了台词、图片、音乐、选项怎么写。
 
 ## 运行现成的 PGM 游戏
 
@@ -61,11 +77,11 @@ open build/PGM.app
 │   ├── pgm.ini            ← 窗口大小、路径配置
 │   ├── engine.sys         ← 框架引导脚本
 │   └── data/
-│       ├── gmcode.bin     ← 脚本封包（可选，见下）
+│       ├── gmcode.bin     ← 脚本封包（可选）
 │       ├── gmdata.bin     ← 图片封包（可选）
-│       ├── font/          ← 字体
+│       ├── font/  system/
 │       └── bgm/ sound/ voice/ video/
-└── src/                   ← 散装脚本目录
+└── src/
     ├── am_start.ev        ← 入口
     ├── system/            ← 框架脚本
     ├── user/              ← 你自己写的剧本

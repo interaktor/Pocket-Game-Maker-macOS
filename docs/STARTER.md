@@ -28,7 +28,7 @@ cd 我的游戏 && ./run.sh             # 跑起来
 
 ### 实现方式
 
-**零打包**（`src/pgm_pack.c`）：`pgm_pack_open()` 在封包文件不存在时自动切到
+**零打包**（`engine/host/pgm_pack.c`）：`pgm_pack_open()` 在封包文件不存在时自动切到
 `PGM_PACK_DIR` 模式 —— 脚本包指向 `src/`，资源包指向 `src/files/`。目录读取先
 按 `""`/`system/`/`user/`/`files/` 拼路径，找不到再按 basename 递归搜索，所以
 图片可以随手丢进任意子目录。

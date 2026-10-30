@@ -49,7 +49,7 @@ gmcode.bin 解包 -> .ev 逐行执行 -> text() -> DialogCreate 解析
 它的实现是逐层调用 `am_scene.bg[i]:render()` / `fg[i]:render()` / `ani[i]:render()`
 / `texfg[i]:render()`，最后 `text_layer_render()` 与 `am_ramus_render()`。
 
-**所以 `src/pgm_api.c` 里那个 C 版 `am_scene_render` 实际上是死代码**
+**所以 `engine/host/pgm_api.c` 里那个 C 版 `am_scene_render` 实际上是死代码**
 （注册了但立刻被 Lua 定义覆盖）。调试时用 `PGM_TRACE_SCENE=1` 看不到任何输出，
 不是 bug。若要保留 C 版，需要改名或不注册。
 
@@ -168,7 +168,7 @@ nge_mac 事件队列 -> nge_input.c InputProc -> btn_down()
     -> pgm_input.c 的 C 跳板 -> Lua press_down(key) -> scene:key_down(key)
 ```
 
-之前只是把名字打日志，键盘完全没反应。现在 `src/pgm_input.c` 负责桥接。
+之前只是把名字打日志，键盘完全没反应。现在 `engine/host/pgm_input.c` 负责桥接。
 
 配套加了 `nge_mac_inject_key(code, down)`，可以把按键压进 nge_mac 的事件队列，
 从而**走完整条链路**做自动化验证（而不是绕开输入层直接调 Lua 回调）。
@@ -188,8 +188,8 @@ nge_mac 事件队列 -> nge_input.c InputProc -> btn_down()
 
 ## 音频：崩溃已修，播放尚未验证
 
-`third_party/libnge2/coolaudio/nge_audio_mac.m` 用 **AVAudioPlayer** 实现了
-`audio_play_t` 虚表（mp3/wav/aac；不支持 ogg），`src/pgm_audio.c` 把 PGM 的
+`engine/third_party/libnge2/coolaudio/nge_audio_mac.m` 用 **AVAudioPlayer** 实现了
+`audio_play_t` 虚表（mp3/wav/aac；不支持 ogg），`engine/host/pgm_audio.c` 把 PGM 的
 `mp3load/mp3play/SoundCreate/SoundLoad/...` 接到虚表上。两者均已纳入构建，
 `NGE_Init` 传 `INIT_ALL`。
 
@@ -207,7 +207,7 @@ frame #1: pgm-mac`api_SoundVolume + 108
 句柄去调 `SoundVolume` 等，于是读到的是一块已释放内存，`volume` 成员可能是任何值
 （包括 NULL）。
 
-修法（`src/pgm_audio.c`）：
+修法（`engine/host/pgm_audio.c`）：
 1. 所有音效对象登记在 `g_snd[]` 里；
 2. `SoundUnload` 只 `stop()` + 从登记表摘除，**不 free**；
 3. `to_sound()` 每次都查表，查不到就返回 NULL，调用方安全返回。
@@ -262,7 +262,7 @@ SoundCreate  SoundDelete  SoundEos   SoundLoad   SoundPlay
 SoundPause   SoundResume  SoundRewind SoundUnload SoundVolume
 ```
 
-`src/pgm_audio.c` 已全部实现（`SoundDelete` 复用 `SoundUnload` 的语义）。
+`engine/host/pgm_audio.c` 已全部实现（`SoundDelete` 复用 `SoundUnload` 的语义）。
 
 ### 播放状态机验证（直接调用原生 API）
 

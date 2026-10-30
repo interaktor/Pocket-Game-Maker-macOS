@@ -22,3 +22,6 @@ neg_error.txt
 !docs/**/*.png
 !starter/**/*.png
 PGMSAVEDATA/
+
+# 发布包（本地生成，作为 Release 资产上传，不进仓库）
+dist/

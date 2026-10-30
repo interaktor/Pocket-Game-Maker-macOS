@@ -1,6 +1,6 @@
 # 移植笔记 / Porting notes
 
-记录 `third_party/libnge2/` 相对上游 <https://github.com/yydaor/libnge2>
+记录 `engine/third_party/libnge2/` 相对上游 <https://github.com/yydaor/libnge2>
 （`master`，commit 时间 2012 年前后）的**全部**改动。所有改动都可以由
 `scripts/apply_mac_patches.py` 幂等地复现 —— 该脚本用字节级精确替换，并带
 `expected-count` 断言，所以上游一旦变动会立刻失败而不是静默改坏源码。
@@ -198,7 +198,7 @@ y=200 处移动的洋红方块。
 
 **结论：做骨架工程必须从封包导出，不能从 `src/` 拼。**
 
-导出方法（`src/pgm_pack.c`）：
+导出方法（`engine/host/pgm_pack.c`）：
 
 ```sh
 PGM_MAC_DUMP_PACK=/tmp/dump ./build/Release/pgm-mac /path/to/game
@@ -221,7 +221,7 @@ PGM_MAC_DUMP_PACK=/tmp/dump ./build/Release/pgm-mac /path/to/game
 - `pubdata.ev` 里 `goto(*savedata)` 全部语法错被跳过 → 存档初始化不执行
 - `drawramus("A",*a,"B",*b)` 语法错 → 选项界面根本不出现，脚本直接往下跑
 
-修法（`src/pgm_escript.c`）：`EScriptCreate` 时扫一遍所有行建标签表（`*名字` 在行首
+修法（`engine/host/pgm_escript.c`）：`EScriptCreate` 时扫一遍所有行建标签表（`*名字` 在行首
 即为定义），`EScriptDoline` 里：标签定义行直接跳过不执行，其余行先把 `*名字` 替换
 成行号再编译。替换时要跳过字符串字面量和 `--` 注释，否则 `say("*星号*")` 会被破坏。
 

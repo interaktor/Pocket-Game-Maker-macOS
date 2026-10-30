@@ -44,7 +44,7 @@ fi
 echo ">> 依赖前缀: $PREFIX"
 
 # ---- 检查补丁是否已应用 -------------------------------------------------
-if ! grep -q 'PGM-Mac: src/charsets' "$ROOT/third_party/libnge2/CMakeLists.txt" 2>/dev/null; then
+if ! grep -q 'PGM-Mac: src/charsets' "$ROOT/engine/third_party/libnge2/CMakeLists.txt" 2>/dev/null; then
 	echo ">> 应用 macOS 补丁"
 	python3 "$ROOT/scripts/apply_mac_patches.py"
 fi
@@ -68,7 +68,7 @@ cmake \
 	-DCMAKE_CXX_FLAGS="-I$PREFIX/include -I$PREFIX/include/freetype2" \
 	-DCMAKE_OBJC_FLAGS="-I$PREFIX/include" \
 	-DCMAKE_EXE_LINKER_FLAGS="-L$PREFIX/lib" \
-	"$ROOT/third_party/libnge2"
+	"$ROOT/engine/third_party/libnge2"
 
 make -j"$(sysctl -n hw.ncpu)"
 
@@ -77,8 +77,8 @@ LIB_SUFFIX=""
 if [ "$TYPE" = "Debug" ]; then LIB_SUFFIX="_d"; fi
 
 echo ">> 构建 P1 冒烟测试"
-cc -o "$BUILD/p1_smoke" "$ROOT/tests/p1_smoke.c" \
-	-I "$ROOT/third_party/libnge2/include" \
+cc -o "$BUILD/p1_smoke" "$ROOT/engine/tests/p1_smoke.c" \
+	-I "$ROOT/engine/third_party/libnge2/include" \
 	-I "$PREFIX/include" \
 	-I "$PREFIX/include/freetype2" \
 	-DGL_SILENCE_DEPRECATION \
@@ -89,7 +89,7 @@ cc -o "$BUILD/p1_smoke" "$ROOT/tests/p1_smoke.c" \
 	-framework Cocoa -framework OpenGL -framework AVFoundation
 
 # ---- Lua 5.1.4 -----------------------------------------------------------
-LUA_SRC="$ROOT/third_party/lua-5.1.4/src"
+LUA_SRC="$ROOT/engine/third_party/lua-5.1.4/src"
 if [ ! -f "$BUILD/lib/liblua5.1.a" ]; then
 	echo ">> 构建 Lua 5.1.4"
 	mkdir -p "$BUILD/luaobj"
@@ -103,19 +103,19 @@ fi
 # ---- PGM 宿主 ------------------------------------------------------------
 echo ">> 构建 PGM 宿主"
 cc -o "$BUILD/pgm-mac" \
-	"$ROOT/src/pgm_main.c" \
-	"$ROOT/src/pgm_lua.c" \
-	"$ROOT/src/pgm_pack.c" \
-	"$ROOT/src/pgm_api.c" \
-	"$ROOT/src/pgm_gfx.c" \
-	"$ROOT/src/pgm_escript.c" \
-	"$ROOT/src/pgm_mem.c" \
-	"$ROOT/src/pgm_dialog.c" \
-	"$ROOT/src/pgm_effect.c" \
-	"$ROOT/src/pgm_input.c" \
-	"$ROOT/src/pgm_audio.c" \
+	"$ROOT/engine/host/pgm_main.c" \
+	"$ROOT/engine/host/pgm_lua.c" \
+	"$ROOT/engine/host/pgm_pack.c" \
+	"$ROOT/engine/host/pgm_api.c" \
+	"$ROOT/engine/host/pgm_gfx.c" \
+	"$ROOT/engine/host/pgm_escript.c" \
+	"$ROOT/engine/host/pgm_mem.c" \
+	"$ROOT/engine/host/pgm_dialog.c" \
+	"$ROOT/engine/host/pgm_effect.c" \
+	"$ROOT/engine/host/pgm_input.c" \
+	"$ROOT/engine/host/pgm_audio.c" \
 	-I "$LUA_SRC" \
-	-I "$ROOT/third_party/libnge2/include" \
+	-I "$ROOT/engine/third_party/libnge2/include" \
 	-I "$PREFIX/include" \
 	-DLUA_USE_MACOSX -DGL_SILENCE_DEPRECATION \
 	-mmacosx-version-min="$OSX_MIN" \

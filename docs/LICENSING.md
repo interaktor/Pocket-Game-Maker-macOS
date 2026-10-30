@@ -6,7 +6,7 @@
 
 ## 1. 事实
 
-对 `third_party/libnge2/` 的全部 `*.c` / `*.h` / `*.cpp` 做了逐个扫描：
+对 `engine/third_party/libnge2/` 的全部 `*.c` / `*.h` / `*.cpp` 做了逐个扫描：
 
 | 文件头声明 | 数量 |
 |---|---|
@@ -71,7 +71,7 @@
 * `src/mac/nge_mac_audio.c`（CoreAudio 后端，P4 阶段）
 * `scripts/apply_mac_patches.py`
 * `tests/`
-* 以及后续 P2–P5 的 PGM 宿主层（`src/pgm_*.c`）
+* 以及后续 P2–P5 的 PGM 宿主层（`engine/host/pgm_*.c`）
 
 ## 5. 游戏内容
 
