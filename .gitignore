@@ -20,4 +20,5 @@ neg_log.txt
 neg_error.txt
 *.png
 !docs/**/*.png
+!starter/**/*.png
 PGMSAVEDATA/
