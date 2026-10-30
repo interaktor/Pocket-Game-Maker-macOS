@@ -167,6 +167,9 @@ static int api_ImageLoad(lua_State *L)
 		if (path)
 			img = image_load(path, mode, 0);
 	}
+	if (getenv("PGM_TRACE_IMG"))
+		pgm_log("[img] %-20s pack=%d -> %s\n", name, pack,
+				img ? "OK" : "失败");
 	if (!img)
 		pgm_log("!! ImageLoad 失败: %s\n", name);
 	push_image(L, img);

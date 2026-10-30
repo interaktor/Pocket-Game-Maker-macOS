@@ -352,6 +352,7 @@ void pgm_register_api(lua_State *L)
 	pgm_escript_register(L);
 	pgm_mem_register(L);
 	pgm_dialog_register(L);
+	pgm_effect_register(L);
 
 	/* --- 4. 有确定数值的常量 --- */
 	reg_int(L, "PGM_QUIT",   PGM_ST_QUIT);
@@ -396,8 +397,12 @@ static const char *PGM_SCENE_LAYERS[] = { "bg", "texfg", "fg", "ani", NULL };
 
 static int call_obj_method(lua_State *L, const char *method)
 {
-	if (!lua_istable(L, -1))
+	if (!lua_istable(L, -1)) {
+		if (getenv("PGM_TRACE_SCENE"))
+			pgm_log("[scene] 对象不是 table，类型=%s\n",
+					luaL_typename(L, -1));
 		return 0;
+	}
 	lua_getfield(L, -1, method);
 	if (!lua_isfunction(L, -1)) {
 		lua_pop(L, 1);
@@ -420,6 +425,9 @@ static int scene_walk(lua_State *L, const char *method)
 
 	lua_getglobal(L, "am_scene");
 	if (!lua_istable(L, -1)) {
+		if (getenv("PGM_TRACE_SCENE"))
+			pgm_log("[scene] am_scene 不是 table（%s）\n",
+					luaL_typename(L, -1));
 		lua_pop(L, 1);
 		return 0;
 	}
@@ -432,6 +440,9 @@ static int scene_walk(lua_State *L, const char *method)
 			continue;
 		}
 		n = (int)lua_objlen(L, -1);
+		if (getenv("PGM_TRACE_SCENE"))
+			pgm_log("[scene] %s: %d 个对象\n",
+					PGM_SCENE_LAYERS[gi], n);
 		for (i = 1; i <= n; i++) {
 			lua_rawgeti(L, -1, i);          /* obj */
 			if (lua_istable(L, -1))
@@ -446,6 +457,8 @@ static int scene_walk(lua_State *L, const char *method)
 
 static int api_am_scene_render(lua_State *L)
 {
+	{ static int once = 0; if (!once) { once = 1;
+	  pgm_log("[scene] am_scene_render 首次被调用\n"); } }
 	scene_walk(L, "render");
 	return 0;
 }

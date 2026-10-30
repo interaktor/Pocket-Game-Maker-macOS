@@ -43,6 +43,52 @@ gmcode.bin 解包 -> .ev 逐行执行 -> text() -> DialogCreate 解析
 300 帧、0 错误。此时只剩 2 个未实现的桩（`CacheImageLoad` / `CacheClear`），
 且都已用别名实现。
 
+## 重要澄清：场景合成层是 Lua 实现的
+
+`globals.lua:81` 自己定义了 `am_scene_render()`，会覆盖宿主注册的原生同名函数。
+它的实现是逐层调用 `am_scene.bg[i]:render()` / `fg[i]:render()` / `ani[i]:render()`
+/ `texfg[i]:render()`，最后 `text_layer_render()` 与 `am_ramus_render()`。
+
+**所以 `src/pgm_api.c` 里那个 C 版 `am_scene_render` 实际上是死代码**
+（注册了但立刻被 Lua 定义覆盖）。调试时用 `PGM_TRACE_SCENE=1` 看不到任何输出，
+不是 bug。若要保留 C 版，需要改名或不注册。
+
+## 消息框不显示的排查进展
+
+`msgboxon()`（cefunctions.lua:47）把消息框当作 **FG 精灵 #10**：
+
+```lua
+textlen(MSGTEXT_LINELEN); textline(MSGTEXT_LINEMAX); textxy(MSGTEXT_DX,MSGTEXT_DY)
+fgnull(MSGBOX_NUM)
+_fg(MSGBOX_NUM, MSGBOX, 1, time, IMG_8888)   -- 加载 msgbox01.png
+fgxy(MSGBOX_NUM, MSGBOX_DX, MSGBOX_DY)
+fgon(MSGBOX_NUM)                             -- display = true
+```
+
+`FGBase:render()` 的两个提前返回条件：
+
+```lua
+if not self.display then return end
+if not self.image_p[self.image_index+1] then return end
+```
+
+已确认 `msgbox01.png` 确实在 `gmdata.bin` 里（off=0x1e3fbc, size=2771, 合法 PNG），
+也确认 `fgon()` 会设 `display=true`。
+
+**关键线索**：给 `ImageLoad` 加上 `PGM_TRACE_IMG=1` 追踪后，跑 30 帧**一次都没有
+被调用**。也就是说 `FGBase:load()` 根本没走到 `CacheImageLoad`。
+下一步应该顺着 `FGBase:load` 的 `fadein` 分支查：
+
+```lua
+elseif num==am_effect.fadein then
+    if self.image_p[self.image_index+1] then   -- 首次加载时这里是 false
+        ...
+```
+即确认走的是哪个分支、`self.image_index` 初值、以及 `event[255]` 的取值。
+注意 `globals.lua` 里 `event = {}`，`event[255]` 是 nil，而代码写的是
+`if event[255] == 0 then ... elseif event[255] == 1 then ... end` ——
+**两者都不匹配时 `image_p` 不会被赋值**，这很可能就是根因。
+
 ## 下一步
 
 1. **消息框与背景图没有绘制** —— 目前只有文字，没有 `msgbox01.png` 底板和背景。
@@ -61,3 +107,7 @@ gmcode.bin 解包 -> .ev 逐行执行 -> text() -> DialogCreate 解析
 | `PGM_MAC_FRAMES=N` | 只跑 N 帧后退出（0/缺省 = 一直跑） |
 | `PGM_MAC_SHOT=path.png` | 退出前抓一帧存 PNG |
 | `PGM_MAC_DEBUG_WINDOW=1` | 每秒打印一次 AppKit 窗口状态（P1 遗留） |
+| `PGM_MAC_AUTOKEY=N` | 每 N 帧模拟一次确认键（推进对话） |
+| `PGM_TRACE_IMG=1` | 打印每次 ImageLoad 的名字与结果 |
+| `PGM_TRACE_ES=1` | 打印每次 EScriptJump 的参数 |
+| `PGM_TRACE_SCENE=1` | 场景合成层追踪（注意 C 版已被 Lua 覆盖） |
