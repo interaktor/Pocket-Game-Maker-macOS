@@ -214,31 +214,42 @@ frame #1: pgm-mac`api_SoundVolume + 108
 
 修复后 `PGM-CE`、原版 v0.83、音频测试游戏全部 `exit=0`。
 
-### 还没验证的部分（新数据点）
+### 之前的"音频没初始化"是误判 —— 日志在 Release 里被裁掉了
 
-已经确认的事实：
+`include/nge_debug_log.h` 里有：
 
-* `pgm_gfx_start()` 里打印出来的 `INIT_ALL = 3`（`INIT_VIDEO=1 | INIT_AUDIO=2`），
-  值是对的；
-* `InitGraphics()` 确实执行了（窗口被创建）；
-* `libcoolaudio.a` 里 `nge_audio_mac.m.o` 定义了 `T _CoolAudioDefaultInit`，
-  最终二进制里也只有这一个 `T` 符号；
-* `nge.c` 里 `if(flags&INIT_AUDIO) CoolAudioDefaultInit();` 的条件编译没被裁掉。
+```c
+#ifdef NDEBUG
+#define nge_log()          // ← Release 构建下编译成空
+#else
+NGE_API void nge_log(const char* pMessage, ...);
+#endif
+```
 
-但 **`CoolAudioDefaultInit()` 里的 `printf` 和 `nge_log` 都不输出** —— 即使
-**在 `pgm_gfx_start()` 里直接调用它**也一样静默。也就是说链接期
-`CoolAudioDefaultInit` 解析到的并不是 `nge_audio_mac.m` 里那个带打印的实现
-（尽管 `nm` 只看到一个 `T`）。
+所以 **Release 构建里 libnge2 的所有 `nge_log` 都是空操作**，包括
+`Init Graphics Ok`。我在 Release 里追日志，当然什么都看不到，才误以为
+`CoolAudioDefaultInit` 没被调用。
 
-下一步建议（按顺序）：
-1. `nm -m` 看该符号的来源信息，或在 `.m` 里放一个 `static` 全局变量的初始化副作用
-   （比如 `__attribute__((constructor))`）来确认这个编译单元到底有没有进最终二进制；
-2. 检查 `nge_audio_mac.m.o` 是否真的被 `ar` 收进 `libcoolaudio.a`
-   （`ar t` 有名字，但可以 `ar p libcoolaudio.a nge_audio_mac.m.o | nm -` 再看一遍）；
-3. 换一条更确定的路线：**不依赖 coolaudio 的 `CoolAudioDefaultInit` 钩子**，
-   直接在 `pgm_audio.c` 里首次 `SoundCreate` / `mp3load` 时懒初始化 AVAudioPlayer
-   —— 反正真正要的是能播声音，这个 init 钩子本身不承载逻辑；
-4. `.ev` 测试脚本要用全局变量（每行是独立 chunk，`local` 跨行无效）。
+用 **Debug** 构建跑同一个音频测试，日志一切正常：
+
+```
+CoolAudio: macOS 后端已就绪（AVAudioPlayer）
+mac audio: loaded .../bin/data/sound/test.wav (2.0s)
+```
+
+也就是说音频链路是通的：`NGE_Init(INIT_ALL)` → `CoolAudioDefaultInit()` →
+`SoundCreate` → `SoundLoad` → `AVAudioPlayer initWithContentsOfURL` 成功，
+并且正确读出了 2.0 秒的时长。
+
+> **调试提示**：要在 Release 里也能看日志，需要在 CMake 里额外定义
+> `_DEBUG_STDOUT`，或者直接用 Debug 构建（`./scripts/build.sh Debug`）。
+
+### 音频部分仍未验证的
+
+* 实际**出声**没法在这个环境里听，只能确认 AVAudioPlayer 加载成功、时长正确、
+  `play()` 被调用。
+* 不支持 **OGG**（AVFoundation 不解 OGG），`CreateOggPlayer` 返回 NULL。
+* `mp3playtime()` 目前固定返回 0（`audio_play_t` 虚表没有暴露 currentTime）。
 
 ## 下一步
 
