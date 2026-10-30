@@ -23,7 +23,7 @@
   `render()`/`update()`，按这个层序依次调用即可。
 * image / font / timer 都用 Lua userdata + `__gc` 包装，避免泄漏。
 
-## 当前状态：对话文本已在屏幕上渲染
+## 当前状态：完整对话画面（消息框 + 文字 + 等待图标）已渲染
 
 ```
 视频: 480x272 full=0 "PocketGameMaker-ConvertedEdition-"
@@ -32,8 +32,8 @@ Init Graphics Ok
 主循环结束，共 150 帧          <- 0 个 Lua 错误
 ```
 
-跑 `first.ev` 的 `text("Hello, PGM.")`，屏幕左下角正确显示出 **Hello, PGM.**
-（见 `docs/images/p3-dialog-render.png`）。整条链路已经打通：
+跑 `first.ev`，屏幕上正确显示出 **圆角消息框 + "Hello, PGM." + 右侧闪烁的等待图标**
+（见 `docs/images/p3-msgbox.png`）。整条链路已经打通：
 
 ```
 gmcode.bin 解包 -> .ev 逐行执行 -> text() -> DialogCreate 解析
@@ -53,7 +53,34 @@ gmcode.bin 解包 -> .ev 逐行执行 -> text() -> DialogCreate 解析
 （注册了但立刻被 Lua 定义覆盖）。调试时用 `PGM_TRACE_SCENE=1` 看不到任何输出，
 不是 bug。若要保留 C 版，需要改名或不注册。
 
-## 消息框不显示的排查进展
+## 消息框不显示 —— 已解决
+
+根因是 **`EScriptBack()` 的语义**。`run()` 创建脚本后会立刻调用它：
+
+```lua
+function run(file)
+    am_script.stackCount = am_script.stackCount + 1
+    am_script[am_script.stackCount] = CacheEScriptCreate(am_pack.script, file)
+    EScriptBack( am_script[am_script.stackCount] )
+end
+```
+
+而 `FrameEvScriptUpdate` 在 `EScriptDoline` 之后**总会**再调一次 `EScriptNext`。
+所以 `EScriptBack` 必须允许 `cur` 减到 **0**：
+
+```
+cur: 1 --Back--> 0 --Next--> 1     => 下一帧从第 1 行开始
+```
+
+如果像原来那样把 `cur` 卡在 1，Next 会把它推到 2，**每个脚本的第 1 行都会被静默跳过**。
+`first.ev` 恰好第 1 行就是 `msgboxon()`，于是消息框永远不加载。这个 bug 很隐蔽：
+没有报错、没有 stub 日志，只是第一行不见了。
+
+修好之后 `msgbox01.png` 正常从 `gmdata.bin` 加载并绘制。
+
+### 之前的排查记录（已排除）
+
+
 
 `msgboxon()`（cefunctions.lua:47）把消息框当作 **FG 精灵 #10**：
 
@@ -75,19 +102,10 @@ if not self.image_p[self.image_index+1] then return end
 已确认 `msgbox01.png` 确实在 `gmdata.bin` 里（off=0x1e3fbc, size=2771, 合法 PNG），
 也确认 `fgon()` 会设 `display=true`。
 
-**关键线索**：给 `ImageLoad` 加上 `PGM_TRACE_IMG=1` 追踪后，跑 30 帧**一次都没有
-被调用**。也就是说 `FGBase:load()` 根本没走到 `CacheImageLoad`。
-下一步应该顺着 `FGBase:load` 的 `fadein` 分支查：
-
-```lua
-elseif num==am_effect.fadein then
-    if self.image_p[self.image_index+1] then   -- 首次加载时这里是 false
-        ...
-```
-即确认走的是哪个分支、`self.image_index` 初值、以及 `event[255]` 的取值。
-注意 `globals.lua` 里 `event = {}`，`event[255]` 是 nil，而代码写的是
-`if event[255] == 0 then ... elseif event[255] == 1 then ... end` ——
-**两者都不匹配时 `image_p` 不会被赋值**，这很可能就是根因。
+曾经怀疑过 `event[255]`，但 `globals.lua` 的初始化循环
+`for i=1,TABLE_EVENT_MAX do event[i] = v end` 已把它置 0，不是问题。
+`FGBase:load` 的 `fadein` 分支确实会调 `CacheImageLoad`，路径本身没问题 ——
+问题在更上游：那个 `load()` 根本没被调用。
 
 ## 下一步
 

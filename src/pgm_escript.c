@@ -185,6 +185,13 @@ static int api_EScriptDoline(lua_State *L)
 	if (!e || e->cur < 1 || e->cur > e->nlines)
 		return 0;
 	line = e->lines[e->cur - 1];
+
+	if (getenv("PGM_TRACE_EV")) {
+		static int n = 0;
+		if (n++ < 40)
+			pgm_log("[ev] %s:%d  %s\n", e->name, e->cur,
+					line && line[0] ? line : "(空行)");
+	}
 	if (!line || !line[0])
 		return 0;
 
@@ -213,10 +220,18 @@ static int api_EScriptNext(lua_State *L)
 	return 0;
 }
 
+/* EScriptBack(script)
+ *
+ * run() 创建脚本后会立刻调这个，而 FrameEvScriptUpdate 在 EScriptDoline 之后
+ * **总会**再调一次 EScriptNext。所以这里必须允许 cur 减到 0：
+ *     cur: 1 --Back--> 0 --Next--> 1   => 下一帧从第 1 行开始
+ * 若像以前那样卡在 1，Next 会把它推到 2，**第 1 行就被静默跳过了**
+ * （实测 first.ev 的 msgboxon() 就是这样丢的）。
+ */
 static int api_EScriptBack(lua_State *L)
 {
 	pgm_escript *e = to_es(L, 1);
-	if (e && e->cur > 1)
+	if (e && e->cur > 0)
 		e->cur--;
 	return 0;
 }
