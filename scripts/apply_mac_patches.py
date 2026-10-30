@@ -404,6 +404,18 @@ OBJC_BOOL_FIX = [
 ]
 PATCHES.extend(OBJC_BOOL_FIX)
 
+# usleep 吃微秒，但 nge2 的调用方传的是毫秒（LimitFps 里 nge_sleep(1000/fps)）
+SLEEP_FIX = [
+    ("include/nge_misc.h",
+     b"#define nge_sleep(tick) usleep(tick)",
+     b"/* PGM-Mac: usleep() takes microseconds but callers pass milliseconds\n"
+     b"   (LimitFps does nge_sleep(1000/fps)). Without the x1000 the engine\n"
+     b"   slept 1000x too little and ran at ~300fps instead of 60. */\n"
+     b"#define nge_sleep(tick) usleep((tick)*1000)",
+     1),
+]
+PATCHES.extend(SLEEP_FIX)
+
 
 def main():
     failures = []

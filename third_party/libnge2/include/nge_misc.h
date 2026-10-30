@@ -15,7 +15,10 @@
 
 #elif defined __linux__ || defined NGE_IPHONE || defined __APPLE__
 #include <unistd.h>
-#define nge_sleep(tick) usleep(tick)
+/* PGM-Mac: usleep() takes microseconds but callers pass milliseconds
+   (LimitFps does nge_sleep(1000/fps)). Without the x1000 the engine
+   slept 1000x too little and ran at ~300fps instead of 60. */
+#define nge_sleep(tick) usleep((tick)*1000)
 #endif
 
 #ifdef __cplusplus

@@ -98,6 +98,25 @@ libnge2 是轮询式引擎（`nge_main.c` 里 `while(1) { app->mainloop(); }`，
 
 ## D. 上游 bug 修复
 
+### `nge_sleep` 单位错 1000 倍（影响所有类 UNIX 平台）
+
+```c
+/* include/nge_misc.h，Unix 分支 */
+#define nge_sleep(tick) usleep(tick)          // 错
+```
+
+`usleep()` 的参数是**微秒**，但调用方传的是**毫秒** —— `LimitFps` 里写的是
+`nge_sleep(1000/fps)`。对比一下同文件里的 PSP 分支：
+
+```c
+#define nge_sleep(tick) sceKernelDelayThread((tick)*1000)   // ms -> us
+```
+
+PSP 分支自己乘了 1000，说明语义就是毫秒。Linux/macOS 分支漏了这一乘，
+导致引擎实际以 **~300fps** 跑而不是 60fps（白白烧 CPU，也让人误以为
+垂直同步失效）。修成 `usleep((tick)*1000)` 后实测正好 60fps。
+
+
 ### `ScreenToImage()` 的行跨距错误
 
 这是**在所有平台上都存在**的 bug，但在 macOS 上先撞上了，因为需要用
