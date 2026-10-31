@@ -153,8 +153,11 @@ sudo port install libpng libjpeg-turbo giflib freetype
 
 ## 许可
 
-PGM 宿主层为 **GPL-2.0-or-later**（依据 NGE2 源码中 43 个文件的 GPL v2+ 声明；上游 README 写的是 BSD，GPL-2.0-or-later 是唯一在两种读法下都成立的选项）。
-libnge2 保留原始 BSD 声明。详见 `LICENSE`、`NOTICE.md`、`docs/LICENSING.md`。
+**BSD 3-Clause**。libnge2 作者 Kun Wang 于 2026-10-30 回信确认「按 BSD 许可证处理就行」
+—— 源码里那些 GPL v2+ 文件头是当年的模板残留。
+
+PGM 框架脚本（`src/system/` 等）版权归白枫 / 掌机开发者之家，许可尚未确认。
+详见 `LICENSE`、`NOTICE.md`、`docs/LICENSING.md`。
 
 ## 致谢
 
