@@ -130,3 +130,92 @@ visual novels run.
   （法律上更绕，需要单独评估）
 
 如果真走到 C，再来告诉我，我们重新设计分发方式。
+
+---
+
+# 第二封：回复 Kun Wang（2026-10-30 收到回信后）
+
+他的回信里给了三件事：BSD 可以直接用、仓库实际地址是 `NomadaLex/libnge2`、
+愿意解除归档并把贡献者加成 collaborator。
+
+## 回信草稿
+
+> Kun Wang 老师，您好：
+>
+> 收到回信，太感谢了 —— 十几年后还能得到作者本人的确认，对我来说挺不寻常的。
+>
+> 我按您说的把项目许可证改成了 BSD 3-Clause，并在 `docs/LICENSING.md` 里记下了
+> 您的答复作为依据。之前之所以选了 GPL，是因为 README 写 BSD、但 43 个源文件的
+> 文件头写 GPL v2+，在不知道哪个是真实意图的情况下 GPL-2.0-or-later 是唯一
+> 两种读法都成立的选项。现在清楚了，那些文件头是模板残留。
+>
+> 关于您提到解除归档、把我加进来 —— 我很愿意，但想先说清楚我打算做什么，
+> 免得帮倒忙：
+>
+> 我做的是给 libnge2 新增一个 macOS 后端（`NGE_MAC`）。`nge_platform.h` 里其实
+> 早就声明了这个平台宏，但一直没有实现。我补的部分是：
+>
+> - `src/mac/nge_mac_window.m` — Cocoa + NSOpenGLView 窗口与上下文
+> - `coolaudio/nge_audio_mac.m` — AVFoundation 音频后端（mp3 / wav / aac）
+> - 若干平台判断和 `nge_sleep` 单位问题的修正
+>
+> 除此之外的东西（PGM 的宿主层、封包解码、脚本解释器）是 PGM 特有的，不适合
+> 放进 libnge2，所以那些我留在自己的项目里。
+>
+> 想请教您希望我以什么方式提交：
+>
+> 1. 开一个分支 + PR，您 review 后合并
+> 2. 还是直接推到一个新分支，您自己看着办
+>
+> 我倾向第一种，稳妥一些。
+>
+> 另外还有一件小事想麻烦您：这个移植还需要 PGM 的框架脚本（`src/system/` 下
+> 40 个 Lua、`engine.sys`），那部分是白枫老师的，我有原版的代码但这个仓库里
+> 没有明确的许可声明。您提到有他的微信 —— 如果不麻烦的话，能不能帮我把这个
+> 问题转达一下？如果他有微信或者群里的联系方式愿意给我，我直接问也可以。
+>
+> 再次感谢。
+>
+> Best Regards,
+> コトヱ
+
+## 他解除归档之后，具体要做什么
+
+1. **接受邀请** —— 会收到 GitHub 邮件，或者在
+   <https://github.com/NomadaLex/libnge2/invitations> 点 Accept。
+   没看到邮件就去通知页看。
+
+2. **克隆原始仓库**，不要把自己的整个项目推上去：
+
+   ```sh
+   git clone git@github.com:NomadaLex/libnge2.git
+   cd libnge2
+   git checkout -b macos-backend
+   ```
+
+3. **只放 macOS 后端相关的文件进去**：
+
+   | 文件 | 动作 |
+   |---|---|
+   | `src/mac/nge_mac_window.m` | 新增 |
+   | `src/mac/nge_mac.h` | 新增 |
+   | `coolaudio/nge_audio_mac.m` | 新增 |
+   | `include/nge_platform.h` | 改：`__APPLE__` → `NGE_MAC` 判断（注意 `TARGET_OS_IPHONE` 在 macOS 上是 0，不能只写 `defined`） |
+   | `include/nge_misc.h` | 改：`nge_sleep` 毫秒 → 微秒 |
+   | `include/nge_common.h` | 改：`__OBJC__` 下别重复 typedef `BOOL` |
+   | `include/nge_input.h` | 改：`NGE_MAC` 的 `PSP_BUTTON_*` 定义 |
+   | `src/nge_graphics.c` | 改：`ScreenToImage` 的 `GL_PACK_ROW_LENGTH`；macOS 分支 |
+   | `CMakeLists.txt` | 改：`if(APPLE)` 块，`enable_language(OBJC)` + 三个 framework |
+
+4. **别碰** `src/mac/` 之外跟 PGM 有关的东西。上游仓库不需要它们。
+
+## 几个容易踩的点（写进 PR 说明里会显得专业）
+
+- `TARGET_OS_IPHONE` 在 macOS 上定义为 **0**，所以 `#if defined TARGET_OS_IPHONE`
+  会把 macOS 误判成 iOS。必须写成 `#if defined TARGET_OS_IPHONE && TARGET_OS_IPHONE`。
+- `nge_sleep(tick)` 上游实现是 `usleep(tick)`，但调用方传的是毫秒 —— 实际会让引擎
+  跑成 300fps 而不是 60fps。改成 `usleep((tick)*1000)` 后实测 300 帧耗时 5.01 秒。
+- macOS 10.14+ 强制 layer-backing，`NSOpenGLContext setView:` 挂在普通 `NSView`
+  上只会得到一个透明壳子，必须用 `NSOpenGLView` 子类。
+- 不要调 `-[NSApplication run]`，改成每帧
+  `nextEventMatchingMask:` + `sendEvent:` + `CFRunLoopRunInMode` 泵一次。
