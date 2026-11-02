@@ -29,12 +29,12 @@ PGM 自带的 Lua 框架与公开的 `PGM指令表v0.7.txt` 重新实现**的，
 
 * **作者**：Kun Wang \<ifreedom.cn@gmail.com\>
 * **来源**：<https://github.com/yydaor/libnge2>
-* **许可证**：见 `docs/LICENSING.md`（上游自述为 BSD，源文件头却多为 GPL v2+，
+* **许可证**：见 `engine/docs/LICENSING.md`（上游自述为 BSD，源文件头却多为 GPL v2+，
   本项目按两者中更严格的 GPL-2.0-or-later 处理）
 
 本项目的 `third_party/libnge2/` 是对其源码的**修改版**，修改内容包括新增
 macOS (NGE_MAC) 平台后端以及若干移植性修复，逐条记录在
-`docs/LICENSING.md`。
+`engine/docs/LICENSING.md`。
 
 ## 3. PGM_CE —— Lua 侧的魔改框架
 
@@ -48,7 +48,7 @@ macOS (NGE_MAC) 平台后端以及若干移植性修复，逐条记录在
 ## 4. 本项目
 
 * **PGM-Mac 移植**：见 `README.md` 中的作者信息。
-* **许可证**：GPL-2.0-or-later（见 `LICENSE`），原因见 `docs/LICENSING.md`。
+* **许可证**：GPL-2.0-or-later（见 `LICENSE`），原因见 `engine/docs/LICENSING.md`。
 
 ## 商标与产品名
 

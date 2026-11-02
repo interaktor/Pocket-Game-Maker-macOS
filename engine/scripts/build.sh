@@ -3,9 +3,9 @@
 # build.sh — 在 macOS 上构建 libnge2（带 NGE_MAC 后端）和 P1 冒烟测试。
 #
 # 用法：
-#   ./scripts/build.sh              # Release
-#   ./scripts/build.sh Debug        # Debug（默认）
-#   ./scripts/build.sh Debug clean  # 先清干净再构建
+#   ./engine/scripts/build.sh              # Release
+#   ./engine/scripts/build.sh Debug        # Debug（默认）
+#   ./engine/scripts/build.sh Debug clean  # 先清干净再构建
 #
 # 依赖（二选一）：
 #   * Homebrew: brew install libpng jpeg-turbo giflib freetype
@@ -19,7 +19,7 @@ set -e
 TYPE="${1:-Debug}"
 CLEAN="$2"
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BUILD="$ROOT/build/$TYPE"
 
 if [ "$CLEAN" = "clean" ]; then
@@ -46,7 +46,7 @@ echo ">> 依赖前缀: $PREFIX"
 # ---- 检查补丁是否已应用 -------------------------------------------------
 if ! grep -q 'PGM-Mac: src/charsets' "$ROOT/engine/third_party/libnge2/CMakeLists.txt" 2>/dev/null; then
 	echo ">> 应用 macOS 补丁"
-	python3 "$ROOT/scripts/apply_mac_patches.py"
+	python3 "$ROOT/engine/scripts/apply_mac_patches.py"
 fi
 
 # ---- 配置与编译 ---------------------------------------------------------
@@ -127,9 +127,9 @@ cc -o "$BUILD/pgm-mac" \
 echo
 echo "构建完成。验收测试："
 echo "  $BUILD/p1_smoke 20 /tmp/p1_smoke.png     # P1: 渲染"
-echo "  ./scripts/make-test-game.sh              # 组装测试游戏目录"
+echo "  ./engine/scripts/make-test-game.sh              # 组装测试游戏目录"
 echo "  $BUILD/pgm-mac build/testgame            # 加载 PGM 脚本框架"
 echo "  PGM_MAC_FRAMES=60 PGM_MAC_SHOT=/tmp/g.png $BUILD/pgm-mac ../PGM-CE  # 跑主循环并截图"
 echo
 echo "打包成可双击的 .app："
-echo "  ./scripts/build.sh Release && ./scripts/make-app.sh Release ../PGM-CE"
+echo "  ./engine/scripts/build.sh Release && ./engine/scripts/make-app.sh Release ../PGM-CE"

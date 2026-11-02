@@ -10,7 +10,7 @@ if [ ! -x build/Release/pgm-mac ]; then
 	echo "  只需要这一次，以后都是秒开。"
 	echo "======================================================"
 	echo
-	./scripts/build.sh Release
+	./engine/scripts/build.sh Release
 	if [ ! -x build/Release/pgm-mac ]; then
 		echo
 		echo "编译失败了。把上面的报错截图发出来。"

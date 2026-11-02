@@ -11,12 +11,12 @@
 #   里那一份的内容。这样在封包载荷解码完成之前，也能真实验证 Lua 宿主。
 #
 # 用法：
-#   ./scripts/make-test-game.sh [输出目录]
+#   ./engine/scripts/make-test-game.sh [输出目录]
 #   默认输出到 build/testgame
 
 set -e
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${1:-$ROOT/build/testgame}"
 
 CE="${PGM_CE_DIR:-$ROOT/../PGM-CE}"

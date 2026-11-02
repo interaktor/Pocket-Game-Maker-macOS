@@ -9,7 +9,7 @@ NAME="$1"
 DEST="${2:-.}"
 [ -z "$NAME" ] && { echo "用法: $0 <工程名> [目录]"; exit 1; }
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 mkdir -p "$DEST"
 case "$NAME" in
 	*/*) OUT="$NAME" ;;

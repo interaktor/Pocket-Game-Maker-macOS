@@ -11,19 +11,19 @@
 #   5. ad-hoc 签名（Apple Silicon 上未签名的二进制会被拒绝执行）
 #
 # 用法：
-#   ./scripts/make-app.sh [Release|Debug] [游戏目录]
+#   ./engine/scripts/make-app.sh [Release|Debug] [游戏目录]
 #   不带游戏目录时，app 内会放一个 game/ 占位说明，启动时提示拖拽游戏文件夹进来。
 
 set -e
 
 TYPE="${1:-Release}"
 GAME_DIR="${2:-}"
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BUILD="$ROOT/build/$TYPE"
 APP="$ROOT/build/PGM.app"
 
 if [ ! -x "$BUILD/pgm-mac" ]; then
-	echo "!! 找不到 $BUILD/pgm-mac，请先运行 ./scripts/build.sh $TYPE"
+	echo "!! 找不到 $BUILD/pgm-mac，请先运行 ./engine/scripts/build.sh $TYPE"
 	exit 1
 fi
 

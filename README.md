@@ -64,14 +64,14 @@ drawramus("选项一",*a,"选项二",*b)
 
 ```sh
 brew install libpng jpeg-turbo giflib freetype
-./scripts/build.sh Release
+./engine/scripts/build.sh Release
 ```
 
 ## 许可
 
 BSD 3-Clause。代码里原有的 GPL v2+ 文件头是 libnge2 当年的模板残留，作者已确认按 BSD 处理。
 
-`src/system/` 下的框架脚本版权归白枫，授权情况见 `docs/LICENSING.md`。
+`src/system/` 下的框架脚本版权归白枫，授权情况见 `engine/docs/LICENSING.md`。
 
 ## 致谢
 
