@@ -52,6 +52,7 @@ static const CGFloat kThumbW = 128, kThumbH = 90;
 @property (assign) BOOL layoutDirty;
 @property (copy) NSString *playingPath;
 @property (assign) NSInteger previewOptionCount;
+@property (strong) NSTextField *fitWarning;
 @end
 
 @implementation StudioController
@@ -684,13 +685,26 @@ static BOOL isAudio(NSString *p) {
     ocLbl.textColor = NSColor.secondaryLabelColor;
     [self.layoutView addSubview:ocLbl];
 
+    NSButton *handChk = [NSButton checkboxWithTitle:@"显示手型" target:self action:@selector(handToggle:)];
+    handChk.frame = NSMakeRect(200, body.size.height - 30, 110, 22);
+    handChk.state = NSControlStateValueOn;
+    [self.layoutView addSubview:handChk];
+
     NSSegmentedControl *oc = [[NSSegmentedControl alloc] initWithFrame:NSMakeRect(104, body.size.height - 32, 200, 26)];
     oc.segmentCount = 4;
-    for (int i = 0; i < 4; i++) [oc setLabel:[NSString stringWithFormat:@"%d 个", i + 1] forSegment:i];
+    for (int i = 0; i < 4; i++) [oc setLabel:[NSString stringWithFormat:@"%d", i + 1] forSegment:i];
     oc.selectedSegment = 1;
+    oc.frame = NSMakeRect(104, body.size.height - 32, 90, 26);
     oc.target = self;
     oc.action = @selector(optionCountChanged:);
     [self.layoutView addSubview:oc];
+
+    self.fitWarning = [NSTextField labelWithString:@""];
+    self.fitWarning.frame = NSMakeRect(324, body.size.height - 28, body.size.width - 340, 18);
+    self.fitWarning.font = [NSFont systemFontOfSize:11];
+    self.fitWarning.textColor = NSColor.systemRedColor;
+    self.fitWarning.autoresizingMask = NSViewWidthSizable;
+    [self.layoutView addSubview:self.fitWarning];
 
     NSScrollView *sv = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, panelW, body.size.height - 38)];
     sv.autoresizingMask = NSViewHeightSizable;
@@ -715,6 +729,7 @@ static BOOL isAudio(NSString *p) {
     [(NSView *)self.previewView setNeedsDisplay:YES];
     self.layoutDirty = YES;
     self.saveBtn.enabled = YES;
+    [self updateFitWarning];
 }
 
 - (void)loadPreviewImages {
@@ -727,14 +742,38 @@ static BOOL isAudio(NSString *p) {
     [self.previewView setValue:img(@"ramus_bg.png")  forKey:@"ramusImage"];
     [self.previewView setValue:img(@"hand_icon02.png") forKey:@"handImage"];
     self.previewOptionCount = 2;
+    [self.previewView setValue:@YES forKey:@"showHand"];
     [self.previewView setValue:@(2) forKey:@"optionCount"];
     [(NSView *)self.previewView setNeedsDisplay:YES];
+}
+
+- (void)handToggle:(NSButton *)b {
+    [self.previewView setValue:@(b.state == NSControlStateValueOn) forKey:@"showHand"];
+    [(NSView *)self.previewView setNeedsDisplay:YES];
+}
+
+- (void)updateFitWarning {
+    if (!self.fitWarning) return;
+    int msgDY = self.layoutValues[@"MSGBOX_DY"].intValue;
+    int start = self.layoutValues[@"RAMUS_BUTTON_BG_DY"].intValue;
+    int step  = self.layoutValues[@"RAMUS_BUTTON_STEP_DY"].intValue;
+    NSInteger n = self.previewOptionCount;
+    int lastBottom = start + (int)(n - 1) * step + 58;
+    if (n > 1 && lastBottom > msgDY - 4) {
+        self.fitWarning.stringValue = [NSString stringWithFormat:
+            @"⚠︎ %ld 个选项会压到对话框（底 %d > 框顶 %d）", (long)n, lastBottom, msgDY];
+    } else if (step < 58) {
+        self.fitWarning.stringValue = @"⚠︎ 行距小于 58，选项会重叠";
+    } else {
+        self.fitWarning.stringValue = @"";
+    }
 }
 
 - (void)optionCountChanged:(NSSegmentedControl *)sc {
     self.previewOptionCount = sc.selectedSegment + 1;
     [self.previewView setValue:@(self.previewOptionCount) forKey:@"optionCount"];
     [(NSView *)self.previewView setNeedsDisplay:YES];
+    [self updateFitWarning];
 }
 
 - (void)loadLayoutConfig {
@@ -799,6 +838,7 @@ static BOOL isAudio(NSString *p) {
 @property (strong) NSImage *ramusImage;
 @property (strong) NSImage *handImage;
 @property (assign) NSInteger optionCount;
+@property (assign) BOOL showHand;
 @end
 
 @implementation PGMPreviewView
@@ -847,16 +887,43 @@ static BOOL isAudio(NSString *p) {
         [box fill];
     }
 
-    NSDictionary *attr = @{ NSFontAttributeName: [NSFont systemFontOfSize:14],
+    // 用 16x18 的固定字格（和引擎的 FONTWIDTH/FONTHEIGHT 一致）
+    NSDictionary *attr = @{ NSFontAttributeName: [NSFont fontWithName:@"PingFang SC" size:15]
+                                              ?: [NSFont systemFontOfSize:15],
                             NSForegroundColorAttributeName: NSColor.blackColor };
-    // 人名
-    [@"人名" drawAtPoint:NSMakePoint(nameDX, nameDY) withAttributes:attr];
 
-    // 正文三行
-    NSString *sample = @"";
-    for (int i = 0; i < MIN(lineLen, 26); i++) sample = [sample stringByAppendingString:@"字"];
+    // —— 坐标参考线，方便看出起点到底在哪 ——
+    [[NSColor colorWithCalibratedRed:1 green:0.35 blue:0.35 alpha:0.85] setStroke];
+    NSBezierPath *v = [NSBezierPath bezierPath];
+    [v moveToPoint:NSMakePoint(nameDX + 0.5, 0)];
+    [v lineToPoint:NSMakePoint(nameDX + 0.5, 272)];
+    v.lineWidth = 1; [v stroke];
+    NSBezierPath *h = [NSBezierPath bezierPath];
+    [h moveToPoint:NSMakePoint(0, nameDY + 0.5)];
+    [h lineToPoint:NSMakePoint(480, nameDY + 0.5)];
+    h.lineWidth = 1; [h stroke];
+
+    [[NSColor colorWithCalibratedRed:0.2 green:0.9 blue:0.4 alpha:0.85] setStroke];
+    NSBezierPath *tv = [NSBezierPath bezierPath];
+    [tv moveToPoint:NSMakePoint(textDX + 0.5, msgDY)];
+    [tv lineToPoint:NSMakePoint(textDX + 0.5, msgDY + 80)];
+    tv.lineWidth = 1; [tv stroke];
     for (int i = 0; i < 3; i++) {
-        [sample drawAtPoint:NSMakePoint(textDX, textDY + i * 18) withAttributes:attr];
+        NSBezierPath *th = [NSBezierPath bezierPath];
+        [th moveToPoint:NSMakePoint(0, textDY + i * 18 + 0.5)];
+        [th lineToPoint:NSMakePoint(480, textDY + i * 18 + 0.5)];
+        th.lineWidth = 1; [th stroke];
+    }
+
+    // 人名（画在 16x18 格子里，顶端对齐）
+    [@"人名" drawInRect:NSMakeRect(nameDX, nameDY, 64, 18) withAttributes:attr];
+
+    // 正文三行，每字 16 宽
+    int cols = MIN(lineLen, 24);
+    for (int i = 0; i < 3; i++) {
+        for (int c = 0; c < cols; c++)
+            [@"字" drawInRect:NSMakeRect(textDX + c * 16, textDY + i * 18, 16, 18)
+               withAttributes:attr];
     }
 
     // 选项：同样用真图（ramus_bg.png 是上下两帧，58px 一帧）
@@ -877,9 +944,17 @@ static BOOL isAudio(NSString *p) {
             drawAtPoint:NSMakePoint(24, r.origin.y + 20) withAttributes:attr];
     }
 
-    // 手型图标位置
-    [[NSColor systemYellowColor] setFill];
-    NSRectFill(NSMakeRect(4, iconDY, 12, 12));
+    // 手型图标
+    if (self.showHand) {
+        if (self.handImage) {
+            [self.handImage drawInRect:NSMakeRect(6, iconDY - 12, 32, 32)
+                              fromRect:NSZeroRect operation:NSCompositingOperationSourceOver
+                               fraction:1.0 respectFlipped:YES hints:nil];
+        } else {
+            [[NSColor systemYellowColor] setFill];
+            NSRectFill(NSMakeRect(6, iconDY, 16, 16));
+        }
+    }
 
     [ctx restoreGraphicsState];
 

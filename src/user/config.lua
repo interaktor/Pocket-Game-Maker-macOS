@@ -16,11 +16,11 @@ MSGBOX_DY   = 192        -- 框顶端在哪（越大越靠下）
 MSGBOX_DX   = 0          -- 框左边在哪（一般填 0）
 
 -- 人名（框架里叫 DIALOG_NAME_*，不是 MSGNAME_*）
-DIALOG_NAME_DX = 21      -- 人名左边距
-DIALOG_NAME_DY = 170     -- 人名放在框外上方
+DIALOG_NAME_DX = 36      -- 人名左边距
+DIALOG_NAME_DY = 171     -- 人名放在框外上方
 
-MSGTEXT_DX  = 23         -- 正文左边距
-MSGTEXT_DY  = 204        -- 正文第一行顶端在哪
+MSGTEXT_DX  = 45         -- 正文左边距
+MSGTEXT_DY  = 210        -- 正文第一行顶端在哪
 
 -- ★ 每行最多几个字。框内宽 480-35-30 = 415px，每个字 16px，
 --   所以最多 25 个。填 50（默认值）就等于永远不换行，文字会顶出框外。
