@@ -16,11 +16,11 @@ MSGBOX_DY   = 192        -- 框顶端在哪（越大越靠下）
 MSGBOX_DX   = 0          -- 框左边在哪（一般填 0）
 
 -- 人名（框架里叫 DIALOG_NAME_*，不是 MSGNAME_*）
-DIALOG_NAME_DX = 36      -- 人名左边距
-DIALOG_NAME_DY = 171     -- 人名放在框外上方
+DIALOG_NAME_DX = 30      -- 人名左边距
+DIALOG_NAME_DY = 182     -- 人名放在框外上方
 
 MSGTEXT_DX  = 45         -- 正文左边距
-MSGTEXT_DY  = 210        -- 正文第一行顶端在哪
+MSGTEXT_DY  = 207        -- 正文第一行顶端在哪
 
 -- ★ 每行最多几个字。框内宽 480-35-30 = 415px，每个字 16px，
 --   所以最多 25 个。填 50（默认值）就等于永远不换行，文字会顶出框外。
@@ -55,7 +55,7 @@ DIALOG_ICON = "none.png"
 RAMUS_BUTTON_BG_DX   = 0     -- 选项背景左边
 RAMUS_BUTTON_BG_DY   = 26    -- 第一个选项背景顶端
 
-RAMUS_BUTTON_STEP_DY = 64    -- 每行间隔（必须 > 58）
+RAMUS_BUTTON_STEP_DY = 63    -- 每行间隔（必须 > 58）
 RAMUS_BUTTON_STEP_DX = 0
 
 RAMUS_BUTTON_DX      = 24    -- 选项文字左边
@@ -71,3 +71,22 @@ RAMUS_ICON_STEP_DY   = 62    -- 光标跟着选项走，必须和上面行距一
 -- ───────────────────────────────────────────────────────────────
 BGM_VOL   = 60           -- 0~100
 VOICE_VOL = 80           -- 0~100
+
+
+-- ───────────────────────────────────────────────────────────────
+--  人名定位（修复版）
+-- ───────────────────────────────────────────────────────────────
+--  框架自带的 name() 会调 texfgxy() 去设位置，但那个值会被别处覆盖，
+--  导致 DIALOG_NAME_DX/DY 改了没反应。这里直接改写文字层的位置，
+--  绕开 texfgxy()。
+
+function name(tx)
+	if tx then
+		texfg(32, tx, 1, 500)
+		am_scene.texfg[32].dx = DIALOG_NAME_DX
+		am_scene.texfg[32].dy = DIALOG_NAME_DY
+		texfgon(32)
+	else
+		texfgnull(32)
+	end
+end

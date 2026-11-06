@@ -292,6 +292,8 @@ static BOOL isAudio(NSString *p) {
     [self.grid registerClass:[NSCollectionViewItem class] forItemWithIdentifier:@"cell"];
     NSScrollView *gsv = [[NSScrollView alloc] initWithFrame:NSMakeRect(170, 0, aw - 170, ah)];
     gsv.documentView = self.grid;
+    self.grid.frame = gsv.contentView.bounds;
+    self.grid.autoresizingMask = NSViewWidthSizable;
     gsv.hasVerticalScroller = YES;
     gsv.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
     [self.assetView addSubview:gsv];
@@ -368,6 +370,12 @@ static BOOL isAudio(NSString *p) {
 
     [self.window center];
     [self.window makeKeyAndOrderFront:nil];
+
+    // NSCollectionView 在窗口显示前 reloadData 有时不出内容，延后补一次
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.grid.collectionViewLayout invalidateLayout];
+        [self.grid reloadData];
+    });
 }
 
 - (void)switchTab:(id)sender {
