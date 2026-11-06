@@ -3,6 +3,7 @@
 #import <Cocoa/Cocoa.h>
 #import <ImageIO/ImageIO.h>
 #import <AVFoundation/AVFoundation.h>
+#import <CoreText/CoreText.h>
 
 static const CGFloat kThumbW = 128, kThumbH = 90;
 
@@ -212,6 +213,7 @@ static BOOL isAudio(NSString *p) {
     [self loadScriptList];
     [self loadLayoutConfig];
     [self loadPreviewImages];
+    [self loadGameFont];
     for (NSString *k in cats)
         fprintf(stdout, "  %-10s %3lu\n", k.UTF8String, (unsigned long)self.assets[k].count);
     fprintf(stdout, "  合计 %ld\n", (long)n);
@@ -732,6 +734,23 @@ static BOOL isAudio(NSString *p) {
     [self updateFitWarning];
 }
 
+- (void)loadGameFont {
+    NSString *fp = [self.projectRoot stringByAppendingPathComponent:@"bin/data/font/fz.ttf"];
+    if (![NSFileManager.defaultManager fileExistsAtPath:fp]) return;
+    NSURL *url = [NSURL fileURLWithPath:fp];
+    CFArrayRef descs = CTFontManagerCreateFontDescriptorsFromURL((__bridge CFURLRef)url);
+    if (!descs) return;
+    if (CFArrayGetCount(descs) > 0) {
+        CTFontDescriptorRef d = (CTFontDescriptorRef)CFArrayGetValueAtIndex(descs, 0);
+        CTFontRef ct = CTFontCreateWithFontDescriptor(d, 15.0, NULL);
+        NSFont *f = (__bridge_transfer NSFont *)ct;
+        [self.previewView setValue:f forKey:@"gameFont"];
+        fprintf(stdout, "  预览字体: %s\n", f.fontName.UTF8String);
+    }
+    CFRelease(descs);
+    [(NSView *)self.previewView setNeedsDisplay:YES];
+}
+
 - (void)loadPreviewImages {
     NSString *sys = [self.projectRoot stringByAppendingPathComponent:@"src/files/system"];
     NSImage *(^img)(NSString *) = ^NSImage *(NSString *n) {
@@ -839,6 +858,7 @@ static BOOL isAudio(NSString *p) {
 @property (strong) NSImage *handImage;
 @property (assign) NSInteger optionCount;
 @property (assign) BOOL showHand;
+@property (strong) NSFont *gameFont;
 @end
 
 @implementation PGMPreviewView
@@ -887,10 +907,14 @@ static BOOL isAudio(NSString *p) {
         [box fill];
     }
 
-    // 用 16x18 的固定字格（和引擎的 FONTWIDTH/FONTHEIGHT 一致）
-    NSDictionary *attr = @{ NSFontAttributeName: [NSFont fontWithName:@"PingFang SC" size:15]
-                                              ?: [NSFont systemFontOfSize:15],
-                            NSForegroundColorAttributeName: NSColor.blackColor };
+    // 用游戏自己的字体，字格 16x18
+    NSFont *gf = self.gameFont ?: [NSFont systemFontOfSize:15];
+    NSMutableParagraphStyle *ps = [NSMutableParagraphStyle new];
+    ps.minimumLineHeight = 18;
+    ps.maximumLineHeight = 18;
+    NSDictionary *attr = @{ NSFontAttributeName: gf,
+                            NSForegroundColorAttributeName: NSColor.blackColor,
+                            NSParagraphStyleAttributeName: ps };
 
     // —— 坐标参考线，方便看出起点到底在哪 ——
     [[NSColor colorWithCalibratedRed:1 green:0.35 blue:0.35 alpha:0.85] setStroke];
@@ -915,12 +939,19 @@ static BOOL isAudio(NSString *p) {
         th.lineWidth = 1; [th stroke];
     }
 
-    // 人名（画在 16x18 格子里，顶端对齐）
-    [@"人名" drawInRect:NSMakeRect(nameDX, nameDY, 64, 18) withAttributes:attr];
+    // 人名：先画字格边界（红框），再画字
+    [[NSColor colorWithCalibratedRed:1 green:0.2 blue:0.2 alpha:0.55] setStroke];
+    NSBezierPath *nbox = [NSBezierPath bezierPathWithRect:NSMakeRect(nameDX, nameDY, 32, 18)];
+    nbox.lineWidth = 1; [nbox stroke];
+    [@"人名" drawInRect:NSMakeRect(nameDX, nameDY, 32, 18) withAttributes:attr];
 
-    // 正文三行，每字 16 宽
+    // 正文：字格边界 + 每字 16 宽
     int cols = MIN(lineLen, 24);
+    [[NSColor colorWithCalibratedRed:0.2 green:0.9 blue:0.4 alpha:0.35] setStroke];
     for (int i = 0; i < 3; i++) {
+        NSBezierPath *rb = [NSBezierPath bezierPathWithRect:
+            NSMakeRect(textDX, textDY + i * 18, cols * 16, 18)];
+        rb.lineWidth = 1; [rb stroke];
         for (int c = 0; c < cols; c++)
             [@"字" drawInRect:NSMakeRect(textDX + c * 16, textDY + i * 18, 16, 18)
                withAttributes:attr];
