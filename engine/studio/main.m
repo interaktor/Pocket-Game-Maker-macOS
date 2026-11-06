@@ -15,6 +15,16 @@ static const CGFloat kThumbW = 128, kThumbH = 90;
 @end
 @implementation AssetItem @end
 
+static NSSize imageSizeAtPath(NSString *path) {
+    CGImageSourceRef src = CGImageSourceCreateWithURL(
+        (__bridge CFURLRef)[NSURL fileURLWithPath:path], NULL);
+    if (!src) return NSZeroSize;
+    NSDictionary *p = CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(src, 0, NULL));
+    CFRelease(src);
+    return NSMakeSize([p[(id)kCGImagePropertyPixelWidth] doubleValue],
+                      [p[(id)kCGImagePropertyPixelHeight] doubleValue]);
+}
+
 @interface PGMFlippedView : NSView
 @end
 @implementation PGMFlippedView
@@ -56,6 +66,7 @@ static const CGFloat kThumbW = 128, kThumbH = 90;
 @property (copy) NSString *playingPath;
 @property (assign) NSInteger previewOptionCount;
 @property (strong) NSTextField *fitWarning;
+@property (strong) NSArray<NSDictionary *> *swapSpecs;
 @end
 
 @implementation StudioController
@@ -618,8 +629,17 @@ static BOOL isAudio(NSString *p) {
     self.layoutReadouts = [NSMutableDictionary dictionary];
     self.layoutSliders = [NSMutableDictionary dictionary];
 
-    NSArray *spec = @[
-        @"对话框",
+    self.swapSpecs = @[
+        @{ @"title": @"对话框",     @"file": @"msgbox01.png",    @"w": @480, @"h": @80  },
+        @{ @"title": @"选项背景",   @"file": @"ramus_bg.png",    @"w": @480, @"h": @116 },
+        @{ @"title": @"手型图标",   @"file": @"hand_icon02.png", @"w": @32,  @"h": @32  },
+    ];
+
+    NSMutableArray *spec = [NSMutableArray array];
+    [spec addObject:@"素材替换"];
+    for (NSDictionary *d in self.swapSpecs) [spec addObject:d];
+    [spec addObject:@"对话框"];
+    [spec addObjectsFromArray:@[
         @[@"MSGBOX_DY", @0, @272, @"框顶端"],
         @[@"DIALOG_NAME_DX", @0, @480, @"人名左"],
         @[@"DIALOG_NAME_DY", @0, @272, @"人名上"],
@@ -638,12 +658,11 @@ static BOOL isAudio(NSString *p) {
         @"历史回想",
         @[@"HISTORY_TEXT_DX", @0, @480, @"正文左"],
         @[@"HISTORY_TEXT_DY", @0, @272, @"正文上"],
-    ];
+    ]];
 
     CGFloat rowH = 40, headerH = 26, y = 8;
     CGFloat panelW = 400;
-    for (id entry in spec)
-        y += [entry isKindOfClass:[NSString class]] ? headerH : rowH;
+    for (id entry in spec) y += [entry isKindOfClass:[NSString class]] ? headerH : rowH;
 
     PGMFlippedView *doc = [[PGMFlippedView alloc] initWithFrame:NSMakeRect(0, 0, panelW, y + 8)];
     CGFloat cy = 8;
@@ -657,6 +676,31 @@ static BOOL isAudio(NSString *p) {
             cy += headerH;
             continue;
         }
+        if ([entry isKindOfClass:[NSDictionary class]]) {
+            NSDictionary *d = entry;
+            NSTextField *t = [NSTextField labelWithString:d[@"title"]];
+            t.frame = NSMakeRect(22, cy + 10, 78, 18);
+            t.font = [NSFont systemFontOfSize:11];
+            [doc addSubview:t];
+
+            NSTextField *info = [NSTextField labelWithString:
+                [NSString stringWithFormat:@"%@  (%@×%@)",
+                    d[@"file"], d[@"w"], d[@"h"]]];
+            info.frame = NSMakeRect(100, cy + 10, 190, 18);
+            info.font = [NSFont monospacedSystemFontOfSize:10 weight:NSFontWeightRegular];
+            info.textColor = NSColor.secondaryLabelColor;
+            info.lineBreakMode = NSLineBreakByTruncatingMiddle;
+            [doc addSubview:info];
+
+            NSButton *sw = [NSButton buttonWithTitle:@"换…" target:self action:@selector(swapAsset:)];
+            sw.frame = NSMakeRect(296, cy + 6, 60, 26);
+            sw.tag = [self.swapSpecs indexOfObject:d];
+            sw.bezelStyle = NSBezelStyleRounded;
+            [doc addSubview:sw];
+            cy += rowH;
+            continue;
+        }
+
         NSArray *k = entry;
         NSTextField *lbl = [NSTextField labelWithString:k[3]];
         lbl.frame = NSMakeRect(22, cy + 10, 78, 18);
@@ -768,6 +812,52 @@ static BOOL isAudio(NSString *p) {
     [self.previewView setValue:@YES forKey:@"showHand"];
     [self.previewView setValue:@(2) forKey:@"optionCount"];
     [(NSView *)self.previewView setNeedsDisplay:YES];
+}
+
+- (void)swapAsset:(NSButton *)b {
+    if (b.tag < 0 || b.tag >= (NSInteger)self.swapSpecs.count) return;
+    NSDictionary *d = self.swapSpecs[b.tag];
+    NSString *fname = d[@"file"];
+    CGFloat needW = [d[@"w"] doubleValue], needH = [d[@"h"] doubleValue];
+
+    NSOpenPanel *op = [NSOpenPanel openPanel];
+    op.canChooseFiles = YES;
+    op.canChooseDirectories = NO;
+    op.allowedFileTypes = @[@"png", @"jpg", @"jpeg"];
+    op.message = [NSString stringWithFormat:@"选择新的「%@」图片（需要 %.0f×%.0f）",
+                  d[@"title"], needW, needH];
+    if ([op runModal] != NSModalResponseOK || !op.URL) return;
+
+    NSString *src = op.URL.path;
+    NSSize sz = imageSizeAtPath(src);
+    if (sz.width != needW || sz.height != needH) {
+        NSAlert *a = [NSAlert new];
+        a.messageText = @"尺寸不对";
+        a.informativeText = [NSString stringWithFormat:
+            @"「%@」必须是 %.0f×%.0f，你选的是 %.0f×%.0f。\n\n可以用预览或 sips 先改尺寸。",
+            d[@"title"], needW, needH, sz.width, sz.height];
+        [a runModal];
+        return;
+    }
+
+    NSString *dir = [self.projectRoot stringByAppendingPathComponent:@"src/files/system"];
+    NSString *dst = [dir stringByAppendingPathComponent:fname];
+    NSString *bak = [dir stringByAppendingPathComponent:
+        [[fname stringByDeletingPathExtension] stringByAppendingString:@"_orig.png"]];
+
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if (![fm fileExistsAtPath:bak] && [fm fileExistsAtPath:dst])
+        [fm copyItemAtPath:dst toPath:bak error:NULL];
+    [fm removeItemAtPath:dst error:NULL];
+    NSError *err = nil;
+    if (![fm copyItemAtPath:src toPath:dst error:&err]) {
+        self.status.stringValue = [NSString stringWithFormat:@"替换失败：%@", err.localizedDescription];
+        return;
+    }
+    [self loadPreviewImages];
+    [self rebuildGrid];
+    self.status.stringValue = [NSString stringWithFormat:
+        @"已替换 %@，原图备份为 %@", fname, bak.lastPathComponent];
 }
 
 - (void)handToggle:(NSButton *)b {
