@@ -14,6 +14,13 @@ static const CGFloat kThumbW = 128, kThumbH = 90;
 @end
 @implementation AssetItem @end
 
+@interface PGMFlippedView : NSView
+@end
+@implementation PGMFlippedView
+- (BOOL)isFlipped { return YES; }
+@end
+
+
 @interface StudioController : NSObject <NSCollectionViewDataSource, NSCollectionViewDelegate, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSTextViewDelegate>
 @property (strong) NSWindow *window;
 @property (strong) NSTableView *catTable;
@@ -40,8 +47,10 @@ static const CGFloat kThumbW = 128, kThumbH = 90;
 @property (strong) NSView *layoutView;
 @property (strong) NSMutableDictionary<NSString *, NSNumber *> *layoutValues;
 @property (strong) NSMutableDictionary<NSString *, NSTextField *> *layoutReadouts;
+@property (strong) NSMutableDictionary<NSString *, NSSlider *> *layoutSliders;
 @property (strong) id previewView;
 @property (assign) BOOL layoutDirty;
+@property (copy) NSString *playingPath;
 @end
 
 @implementation StudioController
@@ -536,7 +545,12 @@ static BOOL isAudio(NSString *p) {
     iv.layer.backgroundColor = [NSColor colorWithWhite:0.5 alpha:0.12].CGColor;
     [v addSubview:iv];
 
-    NSTextField *tf = [NSTextField labelWithString:ai.name.stringByDeletingPathExtension];
+    NSString *shown = ai.name.stringByDeletingPathExtension;
+    if (isAudio(ai.path)) {
+        BOOL playing = self.playingPath && [self.playingPath isEqualToString:ai.path] && self.player.isPlaying;
+        shown = [NSString stringWithFormat:@"%@ %@", playing ? @"■" : @"▶", shown];
+    }
+    NSTextField *tf = [NSTextField labelWithString:shown];
     tf.frame = NSMakeRect(8, 6, kThumbW, 16);
     tf.font = [NSFont systemFontOfSize:10];
     tf.alignment = NSTextAlignmentCenter;
@@ -551,28 +565,35 @@ static BOOL isAudio(NSString *p) {
     if (!ip) return;
     AssetItem *ai = self.assets[self.categories[self.selCat]][ip.item];
 
-    // 点一下复制文件名；按住 Option 复制完整指令
-    BOOL wantCommand = (NSApp.currentEvent.modifierFlags & NSEventModifierFlagOption) != 0;
-    NSString *text = wantCommand ? ai.command : ai.name;
+    // 点一下复制可直接粘贴进剧本的完整指令
+    NSString *text = ai.command;
     NSPasteboard *pb = NSPasteboard.generalPasteboard;
     [pb clearContents];
     [pb setString:text forType:NSPasteboardTypeString];
+    NSString *hint = @"已复制";
 
-    NSString *hint = wantCommand ? @"已复制指令" : @"已复制文件名";
-
-    // 音频：点了就播
+    // 音频：音乐点了播放/暂停，音效播一次
+    NSString *cat = self.categories[self.selCat];
     if (isAudio(ai.path)) {
-        self.player = nil;
-        NSError *err = nil;
-        self.player = [[AVAudioPlayer alloc] initWithContentsOfURL:[NSURL fileURLWithPath:ai.path]
-                                                             error:&err];
-        if (self.player) {
-            [self.player play];
-            hint = [hint stringByAppendingFormat:@" · 正在播放 %@ (%.1fs)",
-                    ai.name, self.player.duration];
+        BOOL isMusic = [cat isEqualToString:@"音乐"];
+        if (isMusic && self.player.isPlaying && [self.playingPath isEqualToString:ai.path]) {
+            [self.player pause];
+            self.playingPath = nil;
+            hint = [hint stringByAppendingString:@" · 已暂停"];
         } else {
-            hint = [hint stringByAppendingFormat:@" · 无法播放（macOS 不支持 ogg）"];
+            self.player = nil;
+            NSError *err = nil;
+            self.player = [[AVAudioPlayer alloc] initWithContentsOfURL:[NSURL fileURLWithPath:ai.path]
+                                                                 error:&err];
+            if (self.player) {
+                [self.player play];
+                self.playingPath = ai.path;
+                hint = [hint stringByAppendingFormat:@" · 播放中 (%.1fs)", self.player.duration];
+            } else {
+                hint = [hint stringByAppendingString:@" · 无法播放（macOS 不支持 ogg）"];
+            }
         }
+        [self.grid reloadData];
     }
 
     self.status.stringValue = [NSString stringWithFormat:@"%@：%@", hint, text];
@@ -586,49 +607,84 @@ static BOOL isAudio(NSString *p) {
 
     self.layoutValues = [NSMutableDictionary dictionary];
     self.layoutReadouts = [NSMutableDictionary dictionary];
+    self.layoutSliders = [NSMutableDictionary dictionary];
 
-    NSArray *keys = @[
-        @[@"MSGBOX_DY", @0, @272, @"对话框顶端"],
-        @[@"DIALOG_NAME_DX", @0, @480, @"人名左边"],
-        @[@"DIALOG_NAME_DY", @0, @272, @"人名顶端"],
-        @[@"MSGTEXT_DX", @0, @480, @"正文左边"],
-        @[@"MSGTEXT_DY", @0, @272, @"正文顶端"],
+    NSArray *spec = @[
+        @"对话框",
+        @[@"MSGBOX_DY", @0, @272, @"框顶端"],
+        @[@"DIALOG_NAME_DX", @0, @480, @"人名左"],
+        @[@"DIALOG_NAME_DY", @0, @272, @"人名上"],
+        @[@"MSGTEXT_DX", @0, @480, @"正文左"],
+        @[@"MSGTEXT_DY", @0, @272, @"正文上"],
         @[@"MSGTEXT_LINELEN", @8, @40, @"每行字数"],
-        @[@"RAMUS_BUTTON_BG_DY", @0, @272, @"选项起始"],
-        @[@"RAMUS_BUTTON_STEP_DY", @20, @100, @"选项行距"],
+        @"选项菜单",
+        @[@"RAMUS_BUTTON_BG_DY", @0, @272, @"起始位置"],
+        @[@"RAMUS_BUTTON_STEP_DY", @20, @100, @"行距"],
+        @[@"RAMUS_BUTTON_DX", @0, @240, @"文字左"],
         @[@"RAMUS_ICON_DY", @0, @272, @"手型图标"],
+        @"游戏内菜单",
+        @[@"MENU_BUTTON_DX", @0, @480, @"菜单左边"],
+        @[@"MENU_BUTTON_DY", @0, @272, @"菜单顶端"],
+        @[@"MENU_BUTTON_STEP_DY", @10, @60, @"按钮行距"],
+        @"历史回想",
+        @[@"HISTORY_TEXT_DX", @0, @480, @"正文左"],
+        @[@"HISTORY_TEXT_DY", @0, @272, @"正文上"],
     ];
 
-    CGFloat y = body.size.height - 34;
-    for (NSArray *k in keys) {
-        NSString *key = k[0];
-        NSTextField *lbl = [NSTextField labelWithString:k[3]];
-        lbl.frame = NSMakeRect(16, y + 4, 100, 18);
-        lbl.font = [NSFont systemFontOfSize:12];
-        [self.layoutView addSubview:lbl];
+    CGFloat rowH = 40, headerH = 26, y = 8;
+    CGFloat panelW = 400;
+    for (id entry in spec)
+        y += [entry isKindOfClass:[NSString class]] ? headerH : rowH;
 
-        NSSlider *sl = [[NSSlider alloc] initWithFrame:NSMakeRect(120, y, 260, 24)];
+    PGMFlippedView *doc = [[PGMFlippedView alloc] initWithFrame:NSMakeRect(0, 0, panelW, y + 8)];
+    CGFloat cy = 8;
+    for (id entry in spec) {
+        if ([entry isKindOfClass:[NSString class]]) {
+            NSTextField *h = [NSTextField labelWithString:entry];
+            h.frame = NSMakeRect(14, cy + 6, panelW - 28, 18);
+            h.font = [NSFont boldSystemFontOfSize:11];
+            h.textColor = NSColor.secondaryLabelColor;
+            [doc addSubview:h];
+            cy += headerH;
+            continue;
+        }
+        NSArray *k = entry;
+        NSTextField *lbl = [NSTextField labelWithString:k[3]];
+        lbl.frame = NSMakeRect(22, cy + 10, 78, 18);
+        lbl.font = [NSFont systemFontOfSize:11];
+        [doc addSubview:lbl];
+
+        NSSlider *sl = [[NSSlider alloc] initWithFrame:NSMakeRect(100, cy + 6, 180, 24)];
         sl.minValue = [k[1] doubleValue];
         sl.maxValue = [k[2] doubleValue];
-        sl.identifier = key;
+        sl.identifier = k[0];
         sl.target = self;
         sl.action = @selector(layoutSliderChanged:);
         sl.continuous = YES;
-        [self.layoutView addSubview:sl];
+        [doc addSubview:sl];
 
         NSTextField *val = [NSTextField labelWithString:@"—"];
-        val.frame = NSMakeRect(390, y + 4, 230, 18);
+        val.frame = NSMakeRect(288, cy + 10, 100, 18);
         val.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
         val.textColor = NSColor.secondaryLabelColor;
-        [self.layoutView addSubview:val];
-        self.layoutReadouts[key] = val;
-        self.layoutValues[key] = @(0);
-        sl.doubleValue = 0;
+        [doc addSubview:val];
+
+        self.layoutReadouts[k[0]] = val;
+        self.layoutSliders[k[0]] = sl;
+        self.layoutValues[k[0]] = @(sl.doubleValue);
+        cy += rowH;
     }
 
-    // 预览区
+    NSScrollView *sv = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, panelW, body.size.height)];
+    sv.autoresizingMask = NSViewHeightSizable;
+    sv.hasVerticalScroller = YES;
+    sv.drawsBackground = NO;
+    sv.documentView = doc;
+    [self.layoutView addSubview:sv];
+
     Class pv = NSClassFromString(@"PGMPreviewView");
-    self.previewView = [[pv alloc] initWithFrame:NSMakeRect(628, 16, body.size.width - 644, body.size.height - 40)];
+    NSRect pr = NSMakeRect(panelW + 8, 8, body.size.width - panelW - 24, body.size.height - 16);
+    self.previewView = [[pv alloc] initWithFrame:pr];
     NSView *v = (NSView *)self.previewView;
     v.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
     [self.layoutView addSubview:v];
@@ -666,12 +722,10 @@ static BOOL isAudio(NSString *p) {
     [self.previewView setValue:self.layoutValues forKey:@"values"];
     [(NSView *)self.previewView setNeedsDisplay:YES];
     // 滑块位置
-    for (NSView *sub in self.layoutView.subviews) {
-        if ([sub isKindOfClass:[NSSlider class]]) {
-            NSSlider *sl = (NSSlider *)sub;
-            NSNumber *v = self.layoutValues[sl.identifier];
-            if (v) sl.doubleValue = v.doubleValue;
-        }
+    for (NSString *key in self.layoutSliders) {
+        NSSlider *sl = self.layoutSliders[key];
+        NSNumber *v = self.layoutValues[key];
+        if (v) sl.doubleValue = v.doubleValue;
     }
     self.layoutDirty = NO;
 }
