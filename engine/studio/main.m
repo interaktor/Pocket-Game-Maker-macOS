@@ -13,7 +13,7 @@ static const CGFloat kThumbW = 128, kThumbH = 90;
 @end
 @implementation AssetItem @end
 
-@interface StudioController : NSObject <NSCollectionViewDataSource, NSCollectionViewDelegate, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate>
+@interface StudioController : NSObject <NSCollectionViewDataSource, NSCollectionViewDelegate, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSTextViewDelegate>
 @property (strong) NSWindow *window;
 @property (strong) NSTableView *catTable;
 @property (strong) NSCollectionView *grid;
@@ -23,6 +23,17 @@ static const CGFloat kThumbW = 128, kThumbH = 90;
 @property (strong) NSMutableDictionary<NSString *, NSArray<AssetItem *> *> *assets;
 @property (copy) NSString *projectRoot;
 @property (assign) NSInteger selCat;
+// —— 剧本编辑 ——
+@property (strong) NSView *assetView;
+@property (strong) NSView *scriptView;
+@property (strong) NSSegmentedControl *tabs;
+@property (strong) NSTableView *fileTable;
+@property (strong) NSTextView *editor;
+@property (strong) NSArray<NSString *> *scriptFiles;
+@property (copy) NSString *curScript;
+@property (assign) BOOL dirty;
+@property (strong) NSButton *runBtn;
+@property (strong) NSButton *saveBtn;
 @end
 
 @implementation StudioController
@@ -31,6 +42,7 @@ static const CGFloat kThumbW = 128, kThumbH = 90;
     if ((self = [super init])) {
         _categories = @[];
         _assets = [NSMutableDictionary dictionary];
+        _scriptFiles = @[];
         _selCat = -1;
     }
     return self;
@@ -177,6 +189,8 @@ static BOOL isAudio(NSString *p) {
     NSInteger n = 0;
     for (NSString *k in cats) n += self.assets[k].count;
     self.status.stringValue = [NSString stringWithFormat:@"共 %ld 个素材，点一下即复制指令", (long)n];
+    self.runBtn.enabled = (root.length > 0);
+    [self loadScriptList];
     for (NSString *k in cats)
         fprintf(stdout, "  %-10s %3lu\n", k.UTF8String, (unsigned long)self.assets[k].count);
     fprintf(stdout, "  合计 %ld\n", (long)n);
@@ -186,34 +200,50 @@ static BOOL isAudio(NSString *p) {
 #pragma mark - 界面
 
 - (void)buildUI {
-    NSRect frame = NSMakeRect(0, 0, 980, 640);
+    NSRect frame = NSMakeRect(0, 0, 1100, 700);
     self.window = [[NSWindow alloc] initWithContentRect:frame
         styleMask:(NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskResizable)
           backing:NSBackingStoreBuffered defer:NO];
-    self.window.title = @"PGM Studio — 素材";
+    self.window.title = @"PGM Studio";
     self.window.delegate = self;
     NSView *cv = self.window.contentView;
+    CGFloat W = frame.size.width, H = frame.size.height;
 
-    // 顶部
+    // 顶部：页签切换
+    self.tabs = [[NSSegmentedControl alloc] initWithFrame:NSMakeRect(16, H - 44, 200, 28)];
+    self.tabs.segmentCount = 2;
+    [self.tabs setLabel:@"素材" forSegment:0];
+    [self.tabs setLabel:@"剧本" forSegment:1];
+    self.tabs.selectedSegment = 0;
+    self.tabs.target = self;
+    self.tabs.action = @selector(switchTab:);
+    self.tabs.autoresizingMask = NSViewMinYMargin;
+    [cv addSubview:self.tabs];
+
     NSButton *openBtn = [NSButton buttonWithTitle:@"打开工程…" target:self action:@selector(openProject:)];
-    openBtn.frame = NSMakeRect(16, frame.size.height - 48, 110, 30);
-    openBtn.autoresizingMask = NSViewMinYMargin;
+    openBtn.frame = NSMakeRect(W - 126, H - 46, 110, 30);
+    openBtn.autoresizingMask = NSViewMinYMargin|NSViewMinXMargin;
     [cv addSubview:openBtn];
 
     self.pathLabel = [NSTextField labelWithString:@"（未打开工程）"];
-    self.pathLabel.frame = NSMakeRect(136, frame.size.height - 42, frame.size.width - 160, 18);
+    self.pathLabel.frame = NSMakeRect(228, H - 40, W - 366, 18);
     self.pathLabel.autoresizingMask = NSViewWidthSizable|NSViewMinYMargin;
     self.pathLabel.textColor = NSColor.secondaryLabelColor;
     self.pathLabel.font = [NSFont systemFontOfSize:11];
     [cv addSubview:self.pathLabel];
 
-    CGFloat top = frame.size.height - 60;
+    NSRect body = NSMakeRect(0, 26, W, H - 74);
 
-    // 左：分类
-    NSScrollView *lsv = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 30, 170, top - 30)];
+    /* ---------------- 素材页 ---------------- */
+    self.assetView = [[NSView alloc] initWithFrame:body];
+    self.assetView.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
+    [cv addSubview:self.assetView];
+    CGFloat aw = body.size.width, ah = body.size.height;
+
+    NSScrollView *lsv = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 170, ah)];
     lsv.autoresizingMask = NSViewHeightSizable;
     lsv.hasVerticalScroller = YES;
-    lsv.borderType = NSNoBorder;
+    lsv.drawsBackground = NO;
     self.catTable = [[NSTableView alloc] initWithFrame:lsv.bounds];
     NSTableColumn *col = [[NSTableColumn alloc] initWithIdentifier:@"c"];
     col.width = 160;
@@ -223,35 +253,183 @@ static BOOL isAudio(NSString *p) {
     self.catTable.delegate = self;
     self.catTable.rowHeight = 26;
     lsv.documentView = self.catTable;
-    [cv addSubview:lsv];
+    [self.assetView addSubview:lsv];
 
-    // 右：缩略图网格
     NSCollectionViewFlowLayout *layout = [NSCollectionViewFlowLayout new];
     layout.itemSize = NSMakeSize(kThumbW + 16, kThumbH + 34);
     layout.sectionInset = NSEdgeInsetsMake(12, 12, 12, 12);
     layout.minimumInteritemSpacing = 8;
     layout.minimumLineSpacing = 8;
-    self.grid = [[NSCollectionView alloc] initWithFrame:NSMakeRect(170, 30, frame.size.width - 170, top - 30)];
+    self.grid = [[NSCollectionView alloc] initWithFrame:NSMakeRect(170, 0, aw - 170, ah)];
     self.grid.collectionViewLayout = layout;
     self.grid.dataSource = self;
     self.grid.delegate = self;
     self.grid.selectable = YES;
     [self.grid registerClass:[NSCollectionViewItem class] forItemWithIdentifier:@"cell"];
-    NSScrollView *gsv = [[NSScrollView alloc] initWithFrame:NSMakeRect(170, 30, frame.size.width - 170, top - 30)];
+    NSScrollView *gsv = [[NSScrollView alloc] initWithFrame:NSMakeRect(170, 0, aw - 170, ah)];
     gsv.documentView = self.grid;
     gsv.hasVerticalScroller = YES;
     gsv.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
-    [cv addSubview:gsv];
+    [self.assetView addSubview:gsv];
 
-    // 底部状态
+    /* ---------------- 剧本页 ---------------- */
+    self.scriptView = [[NSView alloc] initWithFrame:body];
+    self.scriptView.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
+    self.scriptView.hidden = YES;
+    [cv addSubview:self.scriptView];
+
+    NSScrollView *fsv = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 200, ah)];
+    fsv.autoresizingMask = NSViewHeightSizable;
+    fsv.hasVerticalScroller = YES;
+    fsv.drawsBackground = NO;
+    self.fileTable = [[NSTableView alloc] initWithFrame:fsv.bounds];
+    NSTableColumn *fc = [[NSTableColumn alloc] initWithIdentifier:@"f"];
+    fc.width = 190;
+    [self.fileTable addTableColumn:fc];
+    self.fileTable.headerView = nil;
+    self.fileTable.dataSource = self;
+    self.fileTable.delegate = self;
+    self.fileTable.rowHeight = 24;
+    fsv.documentView = self.fileTable;
+    [self.scriptView addSubview:fsv];
+
+    NSScrollView *esv = [[NSScrollView alloc] initWithFrame:NSMakeRect(200, 0, aw - 200, ah)];
+    esv.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
+    esv.hasVerticalScroller = YES;
+    esv.hasHorizontalScroller = YES;
+    esv.borderType = NSNoBorder;
+    self.editor = [[NSTextView alloc] initWithFrame:esv.bounds];
+    self.editor.minSize = NSMakeSize(0, 0);
+    self.editor.maxSize = NSMakeSize(FLT_MAX, FLT_MAX);
+    self.editor.verticallyResizable = YES;
+    self.editor.horizontallyResizable = YES;
+    self.editor.autoresizingMask = NSViewWidthSizable;
+    self.editor.textContainer.widthTracksTextView = NO;
+    self.editor.textContainer.containerSize = NSMakeSize(FLT_MAX, FLT_MAX);
+    self.editor.font = [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular];
+    self.editor.richText = NO;
+    self.editor.allowsUndo = YES;
+    self.editor.automaticQuoteSubstitutionEnabled = NO;
+    self.editor.automaticDashSubstitutionEnabled = NO;
+    self.editor.textColor = NSColor.textColor;
+    self.editor.backgroundColor = NSColor.textBackgroundColor;
+    self.editor.delegate = self;
+    esv.documentView = self.editor;
+    [self.scriptView addSubview:esv];
+
+    /* ---------------- 底部 ---------------- */
     self.status = [NSTextField labelWithString:@"打开一个工程开始"];
-    self.status.frame = NSMakeRect(16, 6, frame.size.width - 32, 18);
+    self.status.frame = NSMakeRect(16, 5, W - 300, 18);
     self.status.autoresizingMask = NSViewWidthSizable|NSViewMaxYMargin;
     self.status.font = [NSFont systemFontOfSize:12];
+    self.status.textColor = NSColor.secondaryLabelColor;
     [cv addSubview:self.status];
+
+    self.saveBtn = [NSButton buttonWithTitle:@"保存" target:self action:@selector(saveScript:)];
+    self.saveBtn.frame = NSMakeRect(W - 200, 2, 84, 26);
+    self.saveBtn.autoresizingMask = NSViewMinXMargin|NSViewMaxYMargin;
+    self.saveBtn.keyEquivalent = @"s";
+    self.saveBtn.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+    self.saveBtn.enabled = NO;
+    [cv addSubview:self.saveBtn];
+
+    self.runBtn = [NSButton buttonWithTitle:@"运行 ▶" target:self action:@selector(runGame:)];
+    self.runBtn.frame = NSMakeRect(W - 110, 2, 94, 26);
+    self.runBtn.autoresizingMask = NSViewMinXMargin|NSViewMaxYMargin;
+    self.runBtn.bezelStyle = NSBezelStyleRounded;
+    self.runBtn.enabled = NO;
+    [cv addSubview:self.runBtn];
 
     [self.window center];
     [self.window makeKeyAndOrderFront:nil];
+}
+
+- (void)switchTab:(id)sender {
+    BOOL asset = (self.tabs.selectedSegment == 0);
+    self.assetView.hidden = !asset;
+    self.scriptView.hidden = asset;
+}
+
+/* ---------- 剧本文件 ---------- */
+
+- (void)loadScriptList {
+    NSMutableArray *out = [NSMutableArray array];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSArray *dirs = @[ @"src/user", @"src", @"scenario" ];
+    for (NSString *d in dirs) {
+        NSString *p = [self.projectRoot stringByAppendingPathComponent:d];
+        BOOL isDir = NO;
+        if (![fm fileExistsAtPath:p isDirectory:&isDir] || !isDir) continue;
+        for (NSString *f in [fm contentsOfDirectoryAtPath:p error:NULL]) {
+            NSString *e = f.pathExtension.lowercaseString;
+            if ([e isEqualToString:@"ev"] || [e isEqualToString:@"ks"] || [e isEqualToString:@"lua"])
+                [out addObject:[p stringByAppendingPathComponent:f]];
+        }
+    }
+    [out sortUsingSelector:@selector(compare:)];
+    self.scriptFiles = out;
+    fprintf(stdout, "  剧本文件 %lu 个\n", (unsigned long)out.count);
+    for (NSString *f in out) fprintf(stdout, "    %s\n", f.lastPathComponent.UTF8String);
+    fflush(stdout);
+    [self.fileTable reloadData];
+    if (out.count) {
+        [self.fileTable selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+        [self openScript:out[0]];
+    }
+}
+
+- (NSString *)readText:(NSString *)path {
+    NSData *d = [NSData dataWithContentsOfFile:path];
+    if (!d) return @"";
+    NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+    if (s) return s;
+    // 老文件是 GBK/GB18030
+    NSStringEncoding gb = CFStringConvertEncodingToNSStringEncoding(kCFStringEncodingGB_18030_2000);
+    s = [[NSString alloc] initWithData:d encoding:gb];
+    if (s) return s;
+    return [[NSString alloc] initWithData:d encoding:NSISOLatin1StringEncoding] ?: @"";
+}
+
+- (void)openScript:(NSString *)path {
+    self.curScript = path;
+    self.editor.string = [self readText:path];
+    self.dirty = NO;
+    self.saveBtn.enabled = NO;
+    self.status.stringValue = [NSString stringWithFormat:@"%@  ·  可直接编辑，保存后重新运行",
+                               path.lastPathComponent];
+}
+
+- (void)saveScript:(id)sender {
+    if (!self.curScript) return;
+    NSError *err = nil;
+    NSString *text = self.editor.string;
+    if (![text writeToFile:self.curScript atomically:YES encoding:NSUTF8StringEncoding error:&err]) {
+        self.status.stringValue = [NSString stringWithFormat:@"保存失败：%@", err.localizedDescription];
+        return;
+    }
+    self.dirty = NO;
+    self.saveBtn.enabled = NO;
+    self.status.stringValue = [NSString stringWithFormat:@"已保存 %@", self.curScript.lastPathComponent];
+}
+
+- (void)runGame:(id)sender {
+    if (!self.projectRoot) return;
+    NSString *exeDir = NSBundle.mainBundle.executablePath.stringByDeletingLastPathComponent;
+    NSString *engine = [exeDir stringByAppendingPathComponent:@"pgm-mac"];
+    if (![NSFileManager.defaultManager isExecutableFileAtPath:engine]) {
+        self.status.stringValue = @"找不到 pgm-mac，请先编译引擎";
+        return;
+    }
+    NSTask *t = [NSTask new];
+    t.executableURL = [NSURL fileURLWithPath:engine];
+    t.arguments = @[ self.projectRoot ];
+    t.currentDirectoryURL = [NSURL fileURLWithPath:exeDir];
+    NSError *err = nil;
+    if (![t launchAndReturnError:&err]) {
+        self.status.stringValue = [NSString stringWithFormat:@"启动失败：%@", err.localizedDescription];
+        return;
+    }
+    self.status.stringValue = @"已启动游戏窗口";
 }
 
 - (void)openProject:(id)sender {
@@ -265,7 +443,10 @@ static BOOL isAudio(NSString *p) {
 
 #pragma mark - 表格
 
-- (NSInteger)numberOfRowsInTableView:(NSTableView *)tv { return self.categories.count; }
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tv {
+    if (tv == self.fileTable) return self.scriptFiles.count;
+    return self.categories.count;
+}
 
 - (NSView *)tableView:(NSTableView *)tv viewForTableColumn:(NSTableColumn *)col row:(NSInteger)row {
     NSTableCellView *v = [tv makeViewWithIdentifier:@"c" owner:self];
@@ -279,6 +460,13 @@ static BOOL isAudio(NSString *p) {
         [v addSubview:tf];
         v.textField = tf;
     }
+    if (tv == self.fileTable) {
+        NSString *f = self.scriptFiles[row];
+        v.textField.stringValue = f.lastPathComponent;
+        v.textField.textColor = [f isEqualToString:self.curScript] ? NSColor.controlAccentColor
+                                                                   : NSColor.labelColor;
+        return v;
+    }
     NSString *cat = self.categories[row];
     v.textField.stringValue = [NSString stringWithFormat:@"%@  (%lu)", cat,
                                (unsigned long)self.assets[cat].count];
@@ -286,10 +474,24 @@ static BOOL isAudio(NSString *p) {
 }
 
 - (void)tableViewSelectionDidChange:(NSNotification *)n {
+    if (n.object == self.fileTable) {
+        NSInteger r = self.fileTable.selectedRow;
+        if (r >= 0) {
+            [self openScript:self.scriptFiles[r]];
+            [self.fileTable reloadData];
+        }
+        return;
+    }
     NSInteger r = self.catTable.selectedRow;
     if (r < 0) return;
     self.selCat = r;
     [self.grid reloadData];
+}
+
+- (void)textDidChange:(NSNotification *)n {
+    if (n.object != self.editor) return;
+    self.dirty = YES;
+    self.saveBtn.enabled = YES;
 }
 
 #pragma mark - 网格
