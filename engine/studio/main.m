@@ -22,10 +22,12 @@ static const CGFloat kThumbW = 128, kThumbH = 90;
 @end
 
 
-@interface StudioController : NSObject <NSCollectionViewDataSource, NSCollectionViewDelegate, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSTextViewDelegate>
+@interface StudioController : NSObject <NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSTextViewDelegate>
 @property (strong) NSWindow *window;
 @property (strong) NSTableView *catTable;
-@property (strong) NSCollectionView *grid;
+@property (strong) NSScrollView *gridScroll;
+@property (strong) PGMFlippedView *gridDoc;
+@property (assign) NSInteger selItem;
 @property (strong) NSTextField *status;
 @property (strong) NSTextField *pathLabel;
 @property (strong) NSArray<NSString *> *categories;
@@ -205,7 +207,7 @@ static BOOL isAudio(NSString *p) {
     self.selCat = cats.count ? 0 : -1;
     [self.catTable reloadData];
     if (cats.count) [self.catTable selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
-    [self.grid reloadData];
+    [self rebuildGrid];
     NSInteger n = 0;
     for (NSString *k in cats) n += self.assets[k].count;
     self.status.stringValue = [NSString stringWithFormat:@"共 %ld 个素材，点一下即复制指令", (long)n];
@@ -279,24 +281,13 @@ static BOOL isAudio(NSString *p) {
     lsv.documentView = self.catTable;
     [self.assetView addSubview:lsv];
 
-    NSCollectionViewFlowLayout *layout = [NSCollectionViewFlowLayout new];
-    layout.itemSize = NSMakeSize(kThumbW + 16, kThumbH + 34);
-    layout.sectionInset = NSEdgeInsetsMake(12, 12, 12, 12);
-    layout.minimumInteritemSpacing = 8;
-    layout.minimumLineSpacing = 8;
-    self.grid = [[NSCollectionView alloc] initWithFrame:NSMakeRect(170, 0, aw - 170, ah)];
-    self.grid.collectionViewLayout = layout;
-    self.grid.dataSource = self;
-    self.grid.delegate = self;
-    self.grid.selectable = YES;
-    [self.grid registerClass:[NSCollectionViewItem class] forItemWithIdentifier:@"cell"];
-    NSScrollView *gsv = [[NSScrollView alloc] initWithFrame:NSMakeRect(170, 0, aw - 170, ah)];
-    gsv.documentView = self.grid;
-    self.grid.frame = gsv.contentView.bounds;
-    self.grid.autoresizingMask = NSViewWidthSizable;
-    gsv.hasVerticalScroller = YES;
-    gsv.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
-    [self.assetView addSubview:gsv];
+    self.gridScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(170, 0, aw - 170, ah)];
+    self.gridScroll.hasVerticalScroller = YES;
+    self.gridScroll.drawsBackground = NO;
+    self.gridScroll.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
+    self.gridDoc = [[PGMFlippedView alloc] initWithFrame:NSMakeRect(0, 0, aw - 170, ah)];
+    self.gridScroll.documentView = self.gridDoc;
+    [self.assetView addSubview:self.gridScroll];
 
     /* ---------------- 剧本页 ---------------- */
     self.scriptView = [[NSView alloc] initWithFrame:body];
@@ -371,11 +362,7 @@ static BOOL isAudio(NSString *p) {
     [self.window center];
     [self.window makeKeyAndOrderFront:nil];
 
-    // NSCollectionView 在窗口显示前 reloadData 有时不出内容，延后补一次
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self.grid.collectionViewLayout invalidateLayout];
-        [self.grid reloadData];
-    });
+    dispatch_async(dispatch_get_main_queue(), ^{ [self rebuildGrid]; });
 }
 
 - (void)switchTab:(id)sender {
@@ -472,6 +459,10 @@ static BOOL isAudio(NSString *p) {
     self.status.stringValue = @"已启动游戏窗口";
 }
 
+- (void)windowDidResize:(NSNotification *)n {
+    [self rebuildGrid];
+}
+
 - (void)openProject:(id)sender {
     NSOpenPanel *p = [NSOpenPanel openPanel];
     p.canChooseDirectories = YES;
@@ -525,7 +516,7 @@ static BOOL isAudio(NSString *p) {
     NSInteger r = self.catTable.selectedRow;
     if (r < 0) return;
     self.selCat = r;
-    [self.grid reloadData];
+    [self rebuildGrid];
 }
 
 - (void)textDidChange:(NSNotification *)n {
@@ -534,82 +525,87 @@ static BOOL isAudio(NSString *p) {
     self.saveBtn.enabled = YES;
 }
 
-#pragma mark - 网格
+#pragma mark - 网格（手写，不用 NSCollectionView）
 
-- (NSInteger)collectionView:(NSCollectionView *)cv numberOfItemsInSection:(NSInteger)s {
-    if (self.selCat < 0) return 0;
-    return self.assets[self.categories[self.selCat]].count;
-}
-
-- (NSCollectionViewItem *)collectionView:(NSCollectionView *)cv itemForRepresentedObjectAtIndexPath:(NSIndexPath *)ip {
-    NSCollectionViewItem *item = [cv makeItemWithIdentifier:@"cell" forIndexPath:ip];
+- (void)rebuildGrid {
+    if (!self.gridDoc) return;
+    for (NSView *v in self.gridDoc.subviews.copy) [v removeFromSuperview];
+    if (self.selCat < 0 || self.selCat >= (NSInteger)self.categories.count) return;
     NSArray<AssetItem *> *list = self.assets[self.categories[self.selCat]];
-    AssetItem *ai = list[ip.item];
+    CGFloat clipW = self.gridScroll.contentView.bounds.size.width;
+    if (clipW < 10) clipW = 600;
+    CGFloat tileW = 132, tileH = 116, pad = 10;
+    NSInteger cols = MAX(1, (NSInteger)((clipW - pad) / (tileW + pad)));
+    NSInteger rows = (list.count + cols - 1) / cols;
+    CGFloat totalH = pad + rows * (tileH + pad);
+    self.gridDoc.frame = NSMakeRect(0, 0, clipW, MAX(totalH, self.gridScroll.contentView.bounds.size.height));
 
-    NSView *v = item.view;
-    for (NSView *sub in v.subviews.copy) [sub removeFromSuperview];
+    for (NSInteger k = 0; k < (NSInteger)list.count; k++) {
+        AssetItem *ai = list[k];
+        NSInteger cx = k % cols, cy = k / cols;
+        NSRect fr = NSMakeRect(pad + cx * (tileW + pad), pad + cy * (tileH + pad), tileW, tileH);
 
-    NSImageView *iv = [[NSImageView alloc] initWithFrame:NSMakeRect(8, 26, kThumbW, kThumbH)];
-    iv.imageScaling = NSImageScaleProportionallyUpOrDown;
-    iv.image = ai.thumb;
-    iv.wantsLayer = YES;
-    iv.layer.cornerRadius = 4;
-    iv.layer.masksToBounds = YES;
-    iv.layer.backgroundColor = [NSColor colorWithWhite:0.5 alpha:0.12].CGColor;
-    [v addSubview:iv];
+        NSButton *b = [[NSButton alloc] initWithFrame:fr];
+        b.bordered = NO;
+        b.imagePosition = NSImageAbove;
+        b.imageScaling = NSImageScaleProportionallyUpOrDown;
+        b.image = ai.thumb;
+        b.target = self;
+        b.action = @selector(tileClicked:);
+        b.tag = k;
+        b.toolTip = ai.name;
 
-    NSString *shown = ai.name.stringByDeletingPathExtension;
-    if (isAudio(ai.path)) {
-        BOOL playing = self.playingPath && [self.playingPath isEqualToString:ai.path] && self.player.isPlaying;
-        shown = [NSString stringWithFormat:@"%@ %@", playing ? @"■" : @"▶", shown];
+        NSString *shown = ai.name.stringByDeletingPathExtension;
+        if (isAudio(ai.path)) {
+            BOOL playing = self.playingPath && [self.playingPath isEqualToString:ai.path] && self.player.isPlaying;
+            shown = [NSString stringWithFormat:@"%@ %@", playing ? @"■" : @"▶", shown];
+        }
+        NSMutableParagraphStyle *ps = [NSMutableParagraphStyle new];
+        ps.alignment = NSTextAlignmentCenter;
+        ps.lineBreakMode = NSLineBreakByTruncatingMiddle;
+        b.attributedTitle = [[NSAttributedString alloc]
+            initWithString:shown
+                attributes:@{ NSFontAttributeName: [NSFont systemFontOfSize:10],
+                              NSForegroundColorAttributeName: (k == self.selItem ? NSColor.controlAccentColor
+                                                                                : NSColor.secondaryLabelColor),
+                              NSParagraphStyleAttributeName: ps }];
+        [self.gridDoc addSubview:b];
     }
-    NSTextField *tf = [NSTextField labelWithString:shown];
-    tf.frame = NSMakeRect(8, 6, kThumbW, 16);
-    tf.font = [NSFont systemFontOfSize:10];
-    tf.alignment = NSTextAlignmentCenter;
-    tf.lineBreakMode = NSLineBreakByTruncatingMiddle;
-    tf.textColor = NSColor.secondaryLabelColor;
-    [v addSubview:tf];
-    return item;
 }
 
-- (void)collectionView:(NSCollectionView *)cv didSelectItemsAtIndexPaths:(NSSet<NSIndexPath *> *)paths {
-    NSIndexPath *ip = paths.anyObject;
-    if (!ip) return;
-    AssetItem *ai = self.assets[self.categories[self.selCat]][ip.item];
+- (void)tileClicked:(NSButton *)b {
+    NSArray<AssetItem *> *list = self.assets[self.categories[self.selCat]];
+    if (b.tag < 0 || b.tag >= (NSInteger)list.count) return;
+    self.selItem = b.tag;
+    AssetItem *ai = list[b.tag];
 
-    // 点一下复制可直接粘贴进剧本的完整指令
-    NSString *text = ai.command;
     NSPasteboard *pb = NSPasteboard.generalPasteboard;
     [pb clearContents];
-    [pb setString:text forType:NSPasteboardTypeString];
+    [pb setString:ai.command forType:NSPasteboardTypeString];
     NSString *hint = @"已复制";
 
-    // 音频：音乐点了播放/暂停，音效播一次
     NSString *cat = self.categories[self.selCat];
     if (isAudio(ai.path)) {
         BOOL isMusic = [cat isEqualToString:@"音乐"];
         if (isMusic && self.player.isPlaying && [self.playingPath isEqualToString:ai.path]) {
             [self.player pause];
             self.playingPath = nil;
-            hint = [hint stringByAppendingString:@" · 已暂停"];
+            hint = @"已复制 · 已暂停";
         } else {
             self.player = nil;
-            NSError *err = nil;
             self.player = [[AVAudioPlayer alloc] initWithContentsOfURL:[NSURL fileURLWithPath:ai.path]
-                                                                 error:&err];
+                                                                 error:NULL];
             if (self.player) {
                 [self.player play];
                 self.playingPath = ai.path;
-                hint = [hint stringByAppendingFormat:@" · 播放中 (%.1fs)", self.player.duration];
+                hint = [NSString stringWithFormat:@"已复制 · 播放中 (%.1fs)", self.player.duration];
             } else {
-                hint = [hint stringByAppendingString:@" · 无法播放（macOS 不支持 ogg）"];
+                hint = @"已复制 · 无法播放（macOS 不支持 ogg）";
             }
         }
-        [self.grid reloadData];
     }
-
-    self.status.stringValue = [NSString stringWithFormat:@"%@：%@", hint, text];
+    self.status.stringValue = [NSString stringWithFormat:@"%@：%@", hint, ai.command];
+    [self rebuildGrid];
 }
 
 - (void)buildLayoutTabIn:(NSView *)cv body:(NSRect)body {
