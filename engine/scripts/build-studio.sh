@@ -5,6 +5,6 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="$ROOT/build/Release"
 mkdir -p "$OUT"
 clang -fobjc-arc -O2 \
-	-framework Cocoa -framework ImageIO \
+	-framework Cocoa -framework ImageIO -framework AVFoundation \
 	-o "$OUT/pgm-studio" "$ROOT/engine/studio/main.m"
 echo "完成: $OUT/pgm-studio"

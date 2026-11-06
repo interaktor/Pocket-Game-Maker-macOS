@@ -2,6 +2,7 @@
 // 列出工程里的背景/立绘/音乐，显示缩略图，点击生成对应指令并复制。
 #import <Cocoa/Cocoa.h>
 #import <ImageIO/ImageIO.h>
+#import <AVFoundation/AVFoundation.h>
 
 static const CGFloat kThumbW = 128, kThumbH = 90;
 
@@ -34,6 +35,13 @@ static const CGFloat kThumbW = 128, kThumbH = 90;
 @property (assign) BOOL dirty;
 @property (strong) NSButton *runBtn;
 @property (strong) NSButton *saveBtn;
+@property (strong) AVAudioPlayer *player;
+// —— 布局编辑 ——
+@property (strong) NSView *layoutView;
+@property (strong) NSMutableDictionary<NSString *, NSNumber *> *layoutValues;
+@property (strong) NSMutableDictionary<NSString *, NSTextField *> *layoutReadouts;
+@property (strong) id previewView;
+@property (assign) BOOL layoutDirty;
 @end
 
 @implementation StudioController
@@ -191,6 +199,7 @@ static BOOL isAudio(NSString *p) {
     self.status.stringValue = [NSString stringWithFormat:@"共 %ld 个素材，点一下即复制指令", (long)n];
     self.runBtn.enabled = (root.length > 0);
     [self loadScriptList];
+    [self loadLayoutConfig];
     for (NSString *k in cats)
         fprintf(stdout, "  %-10s %3lu\n", k.UTF8String, (unsigned long)self.assets[k].count);
     fprintf(stdout, "  合计 %ld\n", (long)n);
@@ -210,10 +219,11 @@ static BOOL isAudio(NSString *p) {
     CGFloat W = frame.size.width, H = frame.size.height;
 
     // 顶部：页签切换
-    self.tabs = [[NSSegmentedControl alloc] initWithFrame:NSMakeRect(16, H - 44, 200, 28)];
-    self.tabs.segmentCount = 2;
+    self.tabs = [[NSSegmentedControl alloc] initWithFrame:NSMakeRect(16, H - 44, 280, 28)];
+    self.tabs.segmentCount = 3;
     [self.tabs setLabel:@"素材" forSegment:0];
     [self.tabs setLabel:@"剧本" forSegment:1];
+    [self.tabs setLabel:@"布局" forSegment:2];
     self.tabs.selectedSegment = 0;
     self.tabs.target = self;
     self.tabs.action = @selector(switchTab:);
@@ -226,7 +236,7 @@ static BOOL isAudio(NSString *p) {
     [cv addSubview:openBtn];
 
     self.pathLabel = [NSTextField labelWithString:@"（未打开工程）"];
-    self.pathLabel.frame = NSMakeRect(228, H - 40, W - 366, 18);
+    self.pathLabel.frame = NSMakeRect(308, H - 40, W - 446, 18);
     self.pathLabel.autoresizingMask = NSViewWidthSizable|NSViewMinYMargin;
     self.pathLabel.textColor = NSColor.secondaryLabelColor;
     self.pathLabel.font = [NSFont systemFontOfSize:11];
@@ -340,14 +350,17 @@ static BOOL isAudio(NSString *p) {
     self.runBtn.enabled = NO;
     [cv addSubview:self.runBtn];
 
+    [self buildLayoutTabIn:cv body:body];
+
     [self.window center];
     [self.window makeKeyAndOrderFront:nil];
 }
 
 - (void)switchTab:(id)sender {
-    BOOL asset = (self.tabs.selectedSegment == 0);
-    self.assetView.hidden = !asset;
-    self.scriptView.hidden = asset;
+    NSInteger t = self.tabs.selectedSegment;
+    self.assetView.hidden  = (t != 0);
+    self.scriptView.hidden = (t != 1);
+    self.layoutView.hidden = (t != 2);
 }
 
 /* ---------- 剧本文件 ---------- */
@@ -400,6 +413,11 @@ static BOOL isAudio(NSString *p) {
 }
 
 - (void)saveScript:(id)sender {
+    if (self.layoutDirty) {
+        [self saveLayoutConfig];
+        self.saveBtn.enabled = NO;
+        return;
+    }
     if (!self.curScript) return;
     NSError *err = nil;
     NSString *text = self.editor.string;
@@ -532,12 +550,245 @@ static BOOL isAudio(NSString *p) {
     NSIndexPath *ip = paths.anyObject;
     if (!ip) return;
     AssetItem *ai = self.assets[self.categories[self.selCat]][ip.item];
+
+    // 点一下复制文件名；按住 Option 复制完整指令
+    BOOL wantCommand = (NSApp.currentEvent.modifierFlags & NSEventModifierFlagOption) != 0;
+    NSString *text = wantCommand ? ai.command : ai.name;
     NSPasteboard *pb = NSPasteboard.generalPasteboard;
     [pb clearContents];
-    [pb setString:ai.command forType:NSPasteboardTypeString];
-    self.status.stringValue = [NSString stringWithFormat:@"已复制：%@", ai.command];
+    [pb setString:text forType:NSPasteboardTypeString];
+
+    NSString *hint = wantCommand ? @"已复制指令" : @"已复制文件名";
+
+    // 音频：点了就播
+    if (isAudio(ai.path)) {
+        self.player = nil;
+        NSError *err = nil;
+        self.player = [[AVAudioPlayer alloc] initWithContentsOfURL:[NSURL fileURLWithPath:ai.path]
+                                                             error:&err];
+        if (self.player) {
+            [self.player play];
+            hint = [hint stringByAppendingFormat:@" · 正在播放 %@ (%.1fs)",
+                    ai.name, self.player.duration];
+        } else {
+            hint = [hint stringByAppendingFormat:@" · 无法播放（macOS 不支持 ogg）"];
+        }
+    }
+
+    self.status.stringValue = [NSString stringWithFormat:@"%@：%@", hint, text];
 }
 
+- (void)buildLayoutTabIn:(NSView *)cv body:(NSRect)body {
+    self.layoutView = [[NSView alloc] initWithFrame:body];
+    self.layoutView.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
+    self.layoutView.hidden = YES;
+    [cv addSubview:self.layoutView];
+
+    self.layoutValues = [NSMutableDictionary dictionary];
+    self.layoutReadouts = [NSMutableDictionary dictionary];
+
+    NSArray *keys = @[
+        @[@"MSGBOX_DY", @0, @272, @"对话框顶端"],
+        @[@"DIALOG_NAME_DX", @0, @480, @"人名左边"],
+        @[@"DIALOG_NAME_DY", @0, @272, @"人名顶端"],
+        @[@"MSGTEXT_DX", @0, @480, @"正文左边"],
+        @[@"MSGTEXT_DY", @0, @272, @"正文顶端"],
+        @[@"MSGTEXT_LINELEN", @8, @40, @"每行字数"],
+        @[@"RAMUS_BUTTON_BG_DY", @0, @272, @"选项起始"],
+        @[@"RAMUS_BUTTON_STEP_DY", @20, @100, @"选项行距"],
+        @[@"RAMUS_ICON_DY", @0, @272, @"手型图标"],
+    ];
+
+    CGFloat y = body.size.height - 34;
+    for (NSArray *k in keys) {
+        NSString *key = k[0];
+        NSTextField *lbl = [NSTextField labelWithString:k[3]];
+        lbl.frame = NSMakeRect(16, y + 4, 100, 18);
+        lbl.font = [NSFont systemFontOfSize:12];
+        [self.layoutView addSubview:lbl];
+
+        NSSlider *sl = [[NSSlider alloc] initWithFrame:NSMakeRect(120, y, 260, 24)];
+        sl.minValue = [k[1] doubleValue];
+        sl.maxValue = [k[2] doubleValue];
+        sl.identifier = key;
+        sl.target = self;
+        sl.action = @selector(layoutSliderChanged:);
+        sl.continuous = YES;
+        [self.layoutView addSubview:sl];
+
+        NSTextField *val = [NSTextField labelWithString:@"—"];
+        val.frame = NSMakeRect(390, y + 4, 230, 18);
+        val.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
+        val.textColor = NSColor.secondaryLabelColor;
+        [self.layoutView addSubview:val];
+        self.layoutReadouts[key] = val;
+        self.layoutValues[key] = @(0);
+        sl.doubleValue = 0;
+    }
+
+    // 预览区
+    Class pv = NSClassFromString(@"PGMPreviewView");
+    self.previewView = [[pv alloc] initWithFrame:NSMakeRect(628, 16, body.size.width - 644, body.size.height - 40)];
+    NSView *v = (NSView *)self.previewView;
+    v.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
+    [self.layoutView addSubview:v];
+}
+
+- (void)layoutSliderChanged:(NSSlider *)sl {
+    self.layoutValues[sl.identifier] = @(sl.doubleValue);
+    NSTextField *val = self.layoutReadouts[sl.identifier];
+    val.stringValue = [NSString stringWithFormat:@"%@ = %d", sl.identifier, (int)sl.doubleValue];
+    [self.previewView setValue:self.layoutValues forKey:@"values"];
+    [(NSView *)self.previewView setNeedsDisplay:YES];
+    self.layoutDirty = YES;
+    self.saveBtn.enabled = YES;
+}
+
+- (void)loadLayoutConfig {
+    if (!self.projectRoot) return;
+    NSString *cfg = [self.projectRoot stringByAppendingPathComponent:@"src/user/config.lua"];
+    NSString *text = [self readText:cfg];
+    if (!text.length) {
+        self.status.stringValue = @"没找到 src/user/config.lua";
+        return;
+    }
+    for (NSString *key in self.layoutValues.allKeys) {
+        NSRegularExpression *re = [NSRegularExpression
+            regularExpressionWithPattern:[NSString stringWithFormat:@"(?m)^\\s*%@\\s*=\\s*([0-9]+)", key]
+                                 options:0 error:NULL];
+        NSTextCheckingResult *m = [re firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
+        if (!m) continue;
+        NSInteger v = [[text substringWithRange:[m rangeAtIndex:1]] integerValue];
+        self.layoutValues[key] = @(v);
+        NSTextField *val = self.layoutReadouts[key];
+        val.stringValue = [NSString stringWithFormat:@"%@ = %ld", key, (long)v];
+    }
+    [self.previewView setValue:self.layoutValues forKey:@"values"];
+    [(NSView *)self.previewView setNeedsDisplay:YES];
+    // 滑块位置
+    for (NSView *sub in self.layoutView.subviews) {
+        if ([sub isKindOfClass:[NSSlider class]]) {
+            NSSlider *sl = (NSSlider *)sub;
+            NSNumber *v = self.layoutValues[sl.identifier];
+            if (v) sl.doubleValue = v.doubleValue;
+        }
+    }
+    self.layoutDirty = NO;
+}
+
+- (void)saveLayoutConfig {
+    if (!self.projectRoot) return;
+    NSString *cfg = [self.projectRoot stringByAppendingPathComponent:@"src/user/config.lua"];
+    NSMutableString *text = [[self readText:cfg] mutableCopy];
+    if (!text.length) { self.status.stringValue = @"没有 config.lua 可写"; return; }
+    for (NSString *key in self.layoutValues.allKeys) {
+        NSRegularExpression *re = [NSRegularExpression
+            regularExpressionWithPattern:[NSString stringWithFormat:@"(?m)^(\\s*%@\\s*=\\s*)([0-9]+)", key]
+                                 options:0 error:NULL];
+        NSString *rep = [NSString stringWithFormat:@"$1%d", self.layoutValues[key].intValue];
+        NSRange r = NSMakeRange(0, text.length);
+        if ([re firstMatchInString:text options:0 range:r])
+            [re replaceMatchesInString:text options:0 range:r withTemplate:rep];
+    }
+    NSError *err = nil;
+    if (![text writeToFile:cfg atomically:YES encoding:NSUTF8StringEncoding error:&err]) {
+        self.status.stringValue = [NSString stringWithFormat:@"写入失败：%@", err.localizedDescription];
+        return;
+    }
+    self.layoutDirty = NO;
+    self.status.stringValue = @"布局已写入 config.lua，重新运行即可生效";
+}
+
+@end
+
+
+@interface PGMPreviewView : NSView
+@property (strong) NSDictionary<NSString *, NSNumber *> *values;
+@end
+
+@implementation PGMPreviewView
+- (BOOL)isFlipped { return YES; }
+- (void)drawRect:(NSRect)dirty {
+    [[NSColor darkGrayColor] setFill];
+    NSRectFill(self.bounds);
+
+    CGFloat cw = self.bounds.size.width  - 24;
+    CGFloat ch = self.bounds.size.height - 24;
+    CGFloat sc = MIN(cw / 480.0, ch / 272.0);
+    if (sc <= 0) return;
+    CGFloat ox = (self.bounds.size.width  - 480 * sc) / 2;
+    CGFloat oy = (self.bounds.size.height - 272 * sc) / 2;
+
+    NSGraphicsContext *ctx = NSGraphicsContext.currentContext;
+    [ctx saveGraphicsState];
+    NSAffineTransform *t = [NSAffineTransform transform];
+    [t translateXBy:ox yBy:oy];
+    [t scaleBy:sc];
+    [t concat];
+
+    // 背景画布
+    [[NSColor colorWithCalibratedRed:0.16 green:0.18 blue:0.26 alpha:1] setFill];
+    NSRectFill(NSMakeRect(0, 0, 480, 272));
+
+    int msgDY   = [self.values[@"MSGBOX_DY"] intValue];
+    int nameDX  = [self.values[@"DIALOG_NAME_DX"] intValue];
+    int nameDY  = [self.values[@"DIALOG_NAME_DY"] intValue];
+    int textDX  = [self.values[@"MSGTEXT_DX"] intValue];
+    int textDY  = [self.values[@"MSGTEXT_DY"] intValue];
+    int lineLen = [self.values[@"MSGTEXT_LINELEN"] intValue];
+    int ramDY   = [self.values[@"RAMUS_BUTTON_BG_DY"] intValue];
+    int ramStep = [self.values[@"RAMUS_BUTTON_STEP_DY"] intValue];
+    int iconDY  = [self.values[@"RAMUS_ICON_DY"] intValue];
+
+    // 对话框（480x80）
+    NSBezierPath *box = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(0, msgDY, 480, 80)
+                                                       xRadius:8 yRadius:8];
+    [[NSColor colorWithCalibratedRed:0.85 green:0.84 blue:0.80 alpha:0.95] setFill];
+    [box fill];
+    [[NSColor blackColor] setStroke];
+    box.lineWidth = 2;
+    [box stroke];
+
+    NSDictionary *attr = @{ NSFontAttributeName: [NSFont systemFontOfSize:14],
+                            NSForegroundColorAttributeName: NSColor.blackColor };
+    // 人名
+    [@"人名" drawAtPoint:NSMakePoint(nameDX, nameDY) withAttributes:attr];
+
+    // 正文三行
+    NSString *sample = @"";
+    for (int i = 0; i < MIN(lineLen, 26); i++) sample = [sample stringByAppendingString:@"字"];
+    for (int i = 0; i < 3; i++) {
+        [sample drawAtPoint:NSMakePoint(textDX, textDY + i * 18) withAttributes:attr];
+    }
+
+    // 选项（480x58）
+    for (int i = 0; i < 3; i++) {
+        NSRect r = NSMakeRect(0, ramDY + i * ramStep, 480, 58);
+        if (r.origin.y > 272) break;
+        NSBezierPath *b = [NSBezierPath bezierPathWithRoundedRect:r xRadius:8 yRadius:8];
+        [[NSColor colorWithCalibratedRed:0.72 green:0.74 blue:0.82 alpha:0.85] setFill];
+        [b fill];
+        [[NSColor blackColor] setStroke];
+        b.lineWidth = 1.5;
+        [b stroke];
+        [[NSString stringWithFormat:@"选项 %d", i + 1]
+            drawAtPoint:NSMakePoint(24, r.origin.y + 20) withAttributes:attr];
+    }
+
+    // 手型图标位置
+    [[NSColor systemYellowColor] setFill];
+    NSRectFill(NSMakeRect(4, iconDY, 12, 12));
+
+    [ctx restoreGraphicsState];
+
+    // 边框和尺寸标注
+    NSFrameRect(NSMakeRect(ox, oy, 480 * sc, 272 * sc));
+    [[NSColor secondaryLabelColor] set];
+    NSDictionary *small = @{ NSFontAttributeName: [NSFont systemFontOfSize:10],
+                             NSForegroundColorAttributeName: NSColor.secondaryLabelColor };
+    [@"480 × 272（PSP 实际分辨率）" drawAtPoint:NSMakePoint(ox, oy + 272 * sc + 4)
+                                withAttributes:small];
+}
 @end
 
 int main(int argc, const char *argv[]) {
