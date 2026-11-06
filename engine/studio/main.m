@@ -51,6 +51,7 @@ static const CGFloat kThumbW = 128, kThumbH = 90;
 @property (strong) id previewView;
 @property (assign) BOOL layoutDirty;
 @property (copy) NSString *playingPath;
+@property (assign) NSInteger previewOptionCount;
 @end
 
 @implementation StudioController
@@ -209,6 +210,7 @@ static BOOL isAudio(NSString *p) {
     self.runBtn.enabled = (root.length > 0);
     [self loadScriptList];
     [self loadLayoutConfig];
+    [self loadPreviewImages];
     for (NSString *k in cats)
         fprintf(stdout, "  %-10s %3lu\n", k.UTF8String, (unsigned long)self.assets[k].count);
     fprintf(stdout, "  合计 %ld\n", (long)n);
@@ -675,7 +677,22 @@ static BOOL isAudio(NSString *p) {
         cy += rowH;
     }
 
-    NSScrollView *sv = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, panelW, body.size.height)];
+    // 顶部：预览选项个数
+    NSTextField *ocLbl = [NSTextField labelWithString:@"预览选项数"];
+    ocLbl.frame = NSMakeRect(14, body.size.height - 28, 88, 18);
+    ocLbl.font = [NSFont systemFontOfSize:11];
+    ocLbl.textColor = NSColor.secondaryLabelColor;
+    [self.layoutView addSubview:ocLbl];
+
+    NSSegmentedControl *oc = [[NSSegmentedControl alloc] initWithFrame:NSMakeRect(104, body.size.height - 32, 200, 26)];
+    oc.segmentCount = 4;
+    for (int i = 0; i < 4; i++) [oc setLabel:[NSString stringWithFormat:@"%d 个", i + 1] forSegment:i];
+    oc.selectedSegment = 1;
+    oc.target = self;
+    oc.action = @selector(optionCountChanged:);
+    [self.layoutView addSubview:oc];
+
+    NSScrollView *sv = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, panelW, body.size.height - 38)];
     sv.autoresizingMask = NSViewHeightSizable;
     sv.hasVerticalScroller = YES;
     sv.drawsBackground = NO;
@@ -698,6 +715,26 @@ static BOOL isAudio(NSString *p) {
     [(NSView *)self.previewView setNeedsDisplay:YES];
     self.layoutDirty = YES;
     self.saveBtn.enabled = YES;
+}
+
+- (void)loadPreviewImages {
+    NSString *sys = [self.projectRoot stringByAppendingPathComponent:@"src/files/system"];
+    NSImage *(^img)(NSString *) = ^NSImage *(NSString *n) {
+        NSString *p = [sys stringByAppendingPathComponent:n];
+        return [NSImage.alloc initWithContentsOfFile:p];
+    };
+    [self.previewView setValue:img(@"msgbox01.png") forKey:@"msgboxImage"];
+    [self.previewView setValue:img(@"ramus_bg.png")  forKey:@"ramusImage"];
+    [self.previewView setValue:img(@"hand_icon02.png") forKey:@"handImage"];
+    self.previewOptionCount = 2;
+    [self.previewView setValue:@(2) forKey:@"optionCount"];
+    [(NSView *)self.previewView setNeedsDisplay:YES];
+}
+
+- (void)optionCountChanged:(NSSegmentedControl *)sc {
+    self.previewOptionCount = sc.selectedSegment + 1;
+    [self.previewView setValue:@(self.previewOptionCount) forKey:@"optionCount"];
+    [(NSView *)self.previewView setNeedsDisplay:YES];
 }
 
 - (void)loadLayoutConfig {
@@ -758,6 +795,10 @@ static BOOL isAudio(NSString *p) {
 
 @interface PGMPreviewView : NSView
 @property (strong) NSDictionary<NSString *, NSNumber *> *values;
+@property (strong) NSImage *msgboxImage;
+@property (strong) NSImage *ramusImage;
+@property (strong) NSImage *handImage;
+@property (assign) NSInteger optionCount;
 @end
 
 @implementation PGMPreviewView
@@ -794,14 +835,17 @@ static BOOL isAudio(NSString *p) {
     int ramStep = [self.values[@"RAMUS_BUTTON_STEP_DY"] intValue];
     int iconDY  = [self.values[@"RAMUS_ICON_DY"] intValue];
 
-    // 对话框（480x80）
-    NSBezierPath *box = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(0, msgDY, 480, 80)
-                                                       xRadius:8 yRadius:8];
-    [[NSColor colorWithCalibratedRed:0.85 green:0.84 blue:0.80 alpha:0.95] setFill];
-    [box fill];
-    [[NSColor blackColor] setStroke];
-    box.lineWidth = 2;
-    [box stroke];
+    // 对话框：直接画真图，保证和游戏里一模一样
+    if (self.msgboxImage) {
+        [self.msgboxImage drawInRect:NSMakeRect(0, msgDY, 480, 80)
+                            fromRect:NSZeroRect operation:NSCompositingOperationSourceOver
+                           fraction:1.0 respectFlipped:YES hints:nil];
+    } else {
+        NSBezierPath *box = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(0, msgDY, 480, 80)
+                                                           xRadius:8 yRadius:8];
+        [[NSColor colorWithCalibratedRed:0.85 green:0.84 blue:0.80 alpha:0.95] setFill];
+        [box fill];
+    }
 
     NSDictionary *attr = @{ NSFontAttributeName: [NSFont systemFontOfSize:14],
                             NSForegroundColorAttributeName: NSColor.blackColor };
@@ -815,17 +859,21 @@ static BOOL isAudio(NSString *p) {
         [sample drawAtPoint:NSMakePoint(textDX, textDY + i * 18) withAttributes:attr];
     }
 
-    // 选项（480x58）
-    for (int i = 0; i < 3; i++) {
+    // 选项：同样用真图（ramus_bg.png 是上下两帧，58px 一帧）
+    NSInteger optN = self.optionCount > 0 ? self.optionCount : 2;
+    for (NSInteger i = 0; i < optN; i++) {
         NSRect r = NSMakeRect(0, ramDY + i * ramStep, 480, 58);
-        if (r.origin.y > 272) break;
-        NSBezierPath *b = [NSBezierPath bezierPathWithRoundedRect:r xRadius:8 yRadius:8];
-        [[NSColor colorWithCalibratedRed:0.72 green:0.74 blue:0.82 alpha:0.85] setFill];
-        [b fill];
-        [[NSColor blackColor] setStroke];
-        b.lineWidth = 1.5;
-        [b stroke];
-        [[NSString stringWithFormat:@"选项 %d", i + 1]
+        if (r.origin.y + 58 > 272) break;
+        if (self.ramusImage) {
+            [self.ramusImage drawInRect:r fromRect:NSZeroRect
+                              operation:NSCompositingOperationSourceOver
+                               fraction:1.0 respectFlipped:YES hints:nil];
+        } else {
+            NSBezierPath *b = [NSBezierPath bezierPathWithRoundedRect:r xRadius:8 yRadius:8];
+            [[NSColor colorWithCalibratedRed:0.72 green:0.74 blue:0.82 alpha:0.85] setFill];
+            [b fill];
+        }
+        [[NSString stringWithFormat:@"选项 %ld", (long)(i + 1)]
             drawAtPoint:NSMakePoint(24, r.origin.y + 20) withAttributes:attr];
     }
 

@@ -12,14 +12,14 @@
 --  框的图片 msgbox01.png 是 480 x 80
 --  下面 MSGBOX_DY 是框顶端的 y 坐标。184 表示框占 184~264。
 
-MSGBOX_DY   = 178        -- 框顶端在哪（越大越靠下）
+MSGBOX_DY   = 192        -- 框顶端在哪（越大越靠下）
 MSGBOX_DX   = 0          -- 框左边在哪（一般填 0）
 
 -- 人名（框架里叫 DIALOG_NAME_*，不是 MSGNAME_*）
-DIALOG_NAME_DX = 65      -- 人名左边距
-DIALOG_NAME_DY = 158     -- 人名放在框外上方
+DIALOG_NAME_DX = 21      -- 人名左边距
+DIALOG_NAME_DY = 170     -- 人名放在框外上方
 
-MSGTEXT_DX  = 35         -- 正文左边距
+MSGTEXT_DX  = 23         -- 正文左边距
 MSGTEXT_DY  = 204        -- 正文第一行顶端在哪
 
 -- ★ 每行最多几个字。框内宽 480-35-30 = 415px，每个字 16px，
@@ -55,14 +55,14 @@ DIALOG_ICON = "none.png"
 RAMUS_BUTTON_BG_DX   = 0     -- 选项背景左边
 RAMUS_BUTTON_BG_DY   = 26    -- 第一个选项背景顶端
 
-RAMUS_BUTTON_STEP_DY = 62    -- 每行间隔（必须 > 58）
+RAMUS_BUTTON_STEP_DY = 64    -- 每行间隔（必须 > 58）
 RAMUS_BUTTON_STEP_DX = 0
 
 RAMUS_BUTTON_DX      = 24    -- 选项文字左边
 RAMUS_BUTTON_DY      = 35    -- 选项文字顶端
 
 RAMUS_ICON_DX        = 6     -- 手型光标左边
-RAMUS_ICON_DY        = 40    -- 手型光标顶端
+RAMUS_ICON_DY        = 50    -- 手型光标顶端
 RAMUS_ICON_STEP_DY   = 62    -- 光标跟着选项走，必须和上面行距一致
 
 
