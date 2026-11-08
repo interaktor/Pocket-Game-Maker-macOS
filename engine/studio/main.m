@@ -1108,7 +1108,21 @@ int main(int argc, const char *argv[]) {
 
         StudioController *c = [StudioController new];
         [c buildUI];
-        if (argc > 1) [c loadProject:[NSString stringWithUTF8String:argv[1]]];
+        NSString *proj = nil;
+        if (argc > 1) {
+            proj = [NSString stringWithUTF8String:argv[1]];
+        } else {
+            // 双击启动（从 .app 里跑）时，用打进包里的默认工程
+            NSString *res = NSBundle.mainBundle.resourcePath;
+            if (res) {
+                NSString *bundled = [res stringByAppendingPathComponent:@"game"];
+                NSFileManager *fm = NSFileManager.defaultManager;
+                BOOL isDir = NO;
+                if ([fm fileExistsAtPath:bundled isDirectory:&isDir] && isDir)
+                    proj = bundled;
+            }
+        }
+        if (proj) [c loadProject:proj];
         [NSApp activateIgnoringOtherApps:YES];
         [NSApp run];
     }
