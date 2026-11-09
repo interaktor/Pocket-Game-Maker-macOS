@@ -26,9 +26,26 @@ static NSSize imageSizeAtPath(NSString *path) {
 }
 
 @interface PGMFlippedView : NSView
+@property (copy) void (^onFileDrop)(NSArray<NSURL *> *urls);
 @end
 @implementation PGMFlippedView
 - (BOOL)isFlipped { return YES; }
+- (instancetype)initWithFrame:(NSRect)f {
+    if ((self = [super initWithFrame:f]))
+        [self registerForDraggedTypes:@[NSPasteboardTypeFileURL]];
+    return self;
+}
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)info {
+    return self.onFileDrop ? NSDragOperationCopy : NSDragOperationNone;
+}
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)info {
+    if (!self.onFileDrop) return NO;
+    NSArray<NSURL *> *urls = [info.draggingPasteboard
+        readObjectsForClasses:@[NSURL.class]
+                      options:@{ NSPasteboardURLReadingFileURLsOnlyKey: @YES }];
+    if (urls.count) self.onFileDrop(urls);
+    return YES;
+}
 @end
 
 @interface PGMPassLabel : NSTextField
@@ -136,6 +153,7 @@ static BOOL isAudio(NSString *p) {
     self.pathLabel.stringValue = root;
     self.window.title = [NSString stringWithFormat:@"PGM Studio — %@", root.lastPathComponent];
     self.selItem = -1;
+    [NSUserDefaults.standardUserDefaults setObject:root forKey:@"lastProject"];
     [self.assets removeAllObjects];
     NSFileManager *fm = NSFileManager.defaultManager;
 
@@ -218,8 +236,10 @@ static BOOL isAudio(NSString *p) {
     }
 
     NSMutableArray *cats = [NSMutableArray array];
-    for (NSString *k in @[@"bg", @"fg", @"title", @"gallery", @"rule", @"system", @"音乐", @"音效", @"语音"])
-        if (self.assets[k]) [cats addObject:k];
+    for (NSString *k in @[@"bg", @"fg", @"title", @"gallery", @"rule", @"system", @"音乐", @"音效", @"语音"]) {
+        if (!self.assets[k]) self.assets[k] = @[];      // 空的也列出来，显示 0
+        if (![cats containsObject:k]) [cats addObject:k];
+    }
     for (NSString *k in self.assets.allKeys)
         if (![cats containsObject:k]) [cats addObject:k];
     self.categories = cats;
@@ -322,6 +342,11 @@ static BOOL isAudio(NSString *p) {
     self.gridDoc = [[PGMFlippedView alloc] initWithFrame:NSMakeRect(0, 0, aw - 170, ah)];
     self.gridScroll.documentView = self.gridDoc;
     [self.assetView addSubview:self.gridScroll];
+
+    __weak typeof(self) weakSelf = self;
+    self.gridDoc.onFileDrop = ^(NSArray<NSURL *> *urls) {
+        [weakSelf importFiles:urls];
+    };
 
     /* ---------------- 剧本页 ---------------- */
     self.scriptView = [[NSView alloc] initWithFrame:body];
@@ -789,6 +814,39 @@ static BOOL isAudio(NSString *p) {
     }
 }
 
+- (void)importFiles:(NSArray<NSURL *> *)urls {
+    if (!self.projectRoot) return;
+    NSString *cat = (self.selCat >= 0 && self.selCat < (NSInteger)self.categories.count)
+                    ? self.categories[self.selCat] : @"bg";
+    NSArray *imgCats  = @[@"bg", @"fg", @"title", @"gallery", @"rule"];
+    NSArray *audioMap = @[@"音乐", @"音效", @"语音"];
+
+    NSString *sub = nil;
+    if ([audioMap containsObject:cat]) {
+        sub = [NSString stringWithFormat:@"bin/data/%@",
+               [cat isEqualToString:@"音乐"] ? @"bgm" : ([cat isEqualToString:@"音效"] ? @"sound" : @"voice")];
+    } else if ([imgCats containsObject:cat]) {
+        sub = [NSString stringWithFormat:@"src/files/%@", cat];
+    } else {
+        self.status.stringValue = @"这个分类不能拖入，先选 bg / fg / 音乐 之类的";
+        return;
+    }
+
+    NSString *dir = [self.projectRoot stringByAppendingPathComponent:sub];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:NULL];
+
+    NSInteger ok = 0;
+    for (NSURL *u in urls) {
+        NSString *name = u.lastPathComponent;
+        NSString *dst = [dir stringByAppendingPathComponent:name];
+        [fm removeItemAtPath:dst error:NULL];
+        if ([fm copyItemAtPath:u.path toPath:dst error:NULL]) ok++;
+    }
+    [self loadProject:self.projectRoot];
+    self.status.stringValue = [NSString stringWithFormat:@"导入 %ld 个文件到 %@", (long)ok, sub];
+}
+
 - (void)tileClicked:(NSButton *)b {
     NSArray<AssetItem *> *list = self.assets[self.categories[self.selCat]];
     if (b.tag < 0 || b.tag >= (NSInteger)list.count) return;
@@ -866,7 +924,7 @@ static BOOL isAudio(NSString *p) {
     ]];
 
     CGFloat rowH = 40, headerH = 26, y = 8;
-    CGFloat panelW = 400;
+    CGFloat panelW = 430;
     for (id entry in spec) y += [entry isKindOfClass:[NSString class]] ? headerH : rowH;
 
     PGMFlippedView *doc = [[PGMFlippedView alloc] initWithFrame:NSMakeRect(0, 0, panelW, y + 8)];
@@ -912,7 +970,7 @@ static BOOL isAudio(NSString *p) {
         lbl.font = [NSFont systemFontOfSize:11];
         [doc addSubview:lbl];
 
-        NSSlider *sl = [[NSSlider alloc] initWithFrame:NSMakeRect(100, cy + 6, 180, 24)];
+        NSSlider *sl = [[NSSlider alloc] initWithFrame:NSMakeRect(98, cy + 6, 172, 24)];
         sl.minValue = [k[1] doubleValue];
         sl.maxValue = [k[2] doubleValue];
         sl.identifier = k[0];
@@ -922,7 +980,7 @@ static BOOL isAudio(NSString *p) {
         [doc addSubview:sl];
 
         NSTextField *val = [NSTextField labelWithString:@"—"];
-        val.frame = NSMakeRect(288, cy + 10, 100, 18);
+        val.frame = NSMakeRect(276, cy + 10, 148, 18);
         val.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
         val.textColor = NSColor.secondaryLabelColor;
         [doc addSubview:val];
@@ -966,14 +1024,23 @@ static BOOL isAudio(NSString *p) {
     sv.hasVerticalScroller = YES;
     sv.drawsBackground = NO;
     sv.documentView = doc;
-    [self.layoutView addSubview:sv];
 
+    CGFloat splitH = body.size.height - 38;
     Class pv = NSClassFromString(@"PGMPreviewView");
-    NSRect pr = NSMakeRect(panelW + 8, 8, body.size.width - panelW - 24, body.size.height - 16);
-    self.previewView = [[pv alloc] initWithFrame:pr];
+    self.previewView = [[pv alloc] initWithFrame:NSMakeRect(0, 0, body.size.width - panelW, splitH)];
     NSView *v = (NSView *)self.previewView;
-    v.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
-    [self.layoutView addSubview:v];
+
+    NSSplitView *split = [[NSSplitView alloc] initWithFrame:NSMakeRect(0, 0, body.size.width, splitH)];
+    split.vertical = YES;
+    split.dividerStyle = NSSplitViewDividerStyleThin;
+    split.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
+    sv.frame = NSMakeRect(0, 0, panelW, splitH);
+    [split addSubview:sv];
+    [split addSubview:v];
+    [split setHoldingPriority:260 forSubviewAtIndex:0];
+    [split setPosition:panelW ofDividerAtIndex:0];
+
+    [self.layoutView addSubview:split];
 }
 
 - (void)layoutSliderChanged:(NSSlider *)sl {
@@ -1346,13 +1413,18 @@ int main(int argc, const char *argv[]) {
             proj = [NSString stringWithUTF8String:argv[1]];
         } else {
             // 双击启动（从 .app 里跑）时，用打进包里的默认工程
-            NSString *res = NSBundle.mainBundle.resourcePath;
-            if (res) {
-                NSString *bundled = [res stringByAppendingPathComponent:@"game"];
-                NSFileManager *fm = NSFileManager.defaultManager;
-                BOOL isDir = NO;
-                if ([fm fileExistsAtPath:bundled isDirectory:&isDir] && isDir)
-                    proj = bundled;
+            NSFileManager *fm = NSFileManager.defaultManager;
+            NSString *last = [NSUserDefaults.standardUserDefaults stringForKey:@"lastProject"];
+            BOOL isDir = NO;
+            if (last.length && [fm fileExistsAtPath:last isDirectory:&isDir] && isDir) {
+                proj = last;                       // 接着上次的工程
+            } else {
+                NSString *res = NSBundle.mainBundle.resourcePath;
+                if (res) {
+                    NSString *bundled = [res stringByAppendingPathComponent:@"game"];
+                    if ([fm fileExistsAtPath:bundled isDirectory:&isDir] && isDir)
+                        proj = bundled;
+                }
             }
         }
         if (proj) [c loadProject:proj];
