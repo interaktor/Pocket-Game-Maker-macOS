@@ -134,6 +134,8 @@ static BOOL isAudio(NSString *p) {
 - (void)loadProject:(NSString *)root {
     self.projectRoot = root;
     self.pathLabel.stringValue = root;
+    self.window.title = [NSString stringWithFormat:@"PGM Studio — %@", root.lastPathComponent];
+    self.selItem = -1;
     [self.assets removeAllObjects];
     NSFileManager *fm = NSFileManager.defaultManager;
 
@@ -551,13 +553,25 @@ static BOOL isAudio(NSString *p) {
         NSString *from = [tpl stringByAppendingPathComponent:sub];
         if (![fm fileExistsAtPath:from]) continue;
         if (![fm copyItemAtPath:from toPath:[dest stringByAppendingPathComponent:sub] error:&err]) {
-            self.status.stringValue = [NSString stringWithFormat:@"复制失败：%@", err.localizedDescription];
+            NSAlert *e = [NSAlert new];
+            e.messageText = @"复制工程模板失败";
+            e.informativeText = err.localizedDescription ?: @"未知错误";
+            [e runModal];
             return;
         }
     }
 
-    // 清掉模板里的存档和示例剧情，换成一个空剧本
+    // 清掉模板里的存档和示例素材，新工程应该是干净的
     [fm removeItemAtPath:[dest stringByAppendingPathComponent:@"PGMSAVEDATA"] error:NULL];
+    for (NSString *sub in @[@"src/files/bg", @"src/files/fg", @"src/files/gallery",
+                            @"bin/data/bgm", @"bin/data/sound", @"bin/data/voice"]) {
+        NSString *d = [dest stringByAppendingPathComponent:sub];
+        for (NSString *f in [fm contentsOfDirectoryAtPath:d error:NULL]) {
+            if ([f hasPrefix:@"."] || [f isEqualToString:@"README.txt"]) continue;
+            if ([f.pathExtension.lowercaseString isEqualToString:@"lua"]) continue;  // CGlist.lua 保留
+            [fm removeItemAtPath:[d stringByAppendingPathComponent:f] error:NULL];
+        }
+    }
     NSString *user = [dest stringByAppendingPathComponent:@"src/user"];
     [fm createDirectoryAtPath:user withIntermediateDirectories:YES attributes:nil error:NULL];
     NSString *emptyScript =
@@ -571,8 +585,22 @@ static BOOL isAudio(NSString *p) {
     [emptyScript writeToFile:[user stringByAppendingPathComponent:@"main.ev"]
                   atomically:YES encoding:NSUTF8StringEncoding error:NULL];
 
+    if (![fm fileExistsAtPath:[dest stringByAppendingPathComponent:@"src/user/main.ev"]]) {
+        NSAlert *e = [NSAlert new];
+        e.messageText = @"新建失败";
+        e.informativeText = [NSString stringWithFormat:@"没能写入 %@", dest];
+        [e runModal];
+        return;
+    }
+
     [self loadProject:dest];
-    self.status.stringValue = [NSString stringWithFormat:@"已新建 %@", dest];
+    self.status.stringValue = [NSString stringWithFormat:@"已新建并打开 %@", name];
+
+    NSAlert *ok = [NSAlert new];
+    ok.messageText = [NSString stringWithFormat:@"已创建「%@」", name];
+    ok.informativeText = [NSString stringWithFormat:
+        @"位置：%@\n\n舞台素材是空的，把图片放进 src/files/bg 和 src/files/fg 再回素材页刷新。", dest];
+    [ok runModal];
 }
 
 - (NSString *)exportScriptPath {
