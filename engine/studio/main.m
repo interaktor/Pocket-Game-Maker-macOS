@@ -110,6 +110,7 @@ static NSSize imageSizeAtPath(NSString *path) {
 @property (copy) NSString *playingPath;
 @property (assign) NSInteger previewOptionCount;
 @property (strong) NSTextField *fitWarning;
+@property (assign) BOOL showHandInGame;
 @property (strong) NSArray<NSDictionary *> *swapSpecs;
 @property (strong) NSScrollView *layoutPanel;
 @property (strong) PGMDivider *layoutDivider;
@@ -1246,8 +1247,14 @@ static BOOL isAudio(NSString *p) {
 }
 
 - (void)handToggle:(NSButton *)b {
-    [self.previewView setValue:@(b.state == NSControlStateValueOn) forKey:@"showHand"];
+    self.showHandInGame = (b.state == NSControlStateValueOn);
+    [self.previewView setValue:@(self.showHandInGame) forKey:@"showHand"];
     [(NSView *)self.previewView setNeedsDisplay:YES];
+    self.layoutDirty = YES;
+    self.saveBtn.enabled = YES;
+    self.status.stringValue = self.showHandInGame
+        ? @"游戏里会显示手型（⌘S 保存）"
+        : @"游戏里不显示手型（⌘S 保存）";
 }
 
 - (void)updateFitWarning {
@@ -1301,6 +1308,30 @@ static BOOL isAudio(NSString *p) {
         NSNumber *v = self.layoutValues[key];
         if (v) sl.doubleValue = v.doubleValue;
     }
+    // 读 RAMUS_ICON 决定勾选状态
+    {
+        NSRegularExpression *re = [NSRegularExpression
+            regularExpressionWithPattern:@"(?m)^\\s*RAMUS_ICON\\s*=\\s*\"([^\"]*)\""
+                                 options:0 error:NULL];
+        NSTextCheckingResult *m = [re firstMatchInString:text options:0
+                                                   range:NSMakeRange(0, text.length)];
+        if (m) {
+            NSString *v = [text substringWithRange:[m rangeAtIndex:1]];
+            self.showHandInGame = ![v isEqualToString:@"none.png"];
+        } else {
+            self.showHandInGame = YES;
+        }
+        [self.previewView setValue:@(self.showHandInGame) forKey:@"showHand"];
+        for (NSView *sub in self.layoutView.subviews) {
+            if ([sub isKindOfClass:[NSButton class]] &&
+                [[(NSButton *)sub title] isEqualToString:@"显示手型"]) {
+                [(NSButton *)sub setState:self.showHandInGame ? NSControlStateValueOn
+                                                              : NSControlStateValueOff];
+            }
+        }
+        [(NSView *)self.previewView setNeedsDisplay:YES];
+    }
+
     self.layoutDirty = NO;
 }
 
@@ -1318,6 +1349,20 @@ static BOOL isAudio(NSString *p) {
         if ([re firstMatchInString:text options:0 range:r])
             [re replaceMatchesInString:text options:0 range:r withTemplate:rep];
     }
+    // 手型开关 → RAMUS_ICON
+    {
+        NSString *icon = self.showHandInGame ? @"hand_icon02.png" : @"none.png";
+        NSRegularExpression *re = [NSRegularExpression
+            regularExpressionWithPattern:@"(?m)^(\\s*RAMUS_ICON\\s*=\\s*)\"[^\"]*\""
+                                 options:0 error:NULL];
+        NSRange r = NSMakeRange(0, text.length);
+        NSString *rep = [NSString stringWithFormat:@"$1\"%@\"", icon];
+        if ([re firstMatchInString:text options:0 range:r])
+            [re replaceMatchesInString:text options:0 range:r withTemplate:rep];
+        else
+            [text appendFormat:@"\nRAMUS_ICON = \"%@\"\n", icon];
+    }
+
     NSError *err = nil;
     if (![text writeToFile:cfg atomically:YES encoding:NSUTF8StringEncoding error:&err]) {
         self.status.stringValue = [NSString stringWithFormat:@"写入失败：%@", err.localizedDescription];

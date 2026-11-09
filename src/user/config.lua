@@ -61,6 +61,7 @@ RAMUS_BUTTON_STEP_DX = 0
 RAMUS_BUTTON_DX      = 24    -- 选项文字左边
 RAMUS_BUTTON_DY      = 35    -- 选项文字顶端
 
+RAMUS_ICON           = "hand_icon02.png"   -- 手型光标图片（none.png = 不显示）
 RAMUS_ICON_DX        = 6     -- 手型光标左边
 RAMUS_ICON_DY        = 50    -- 手型光标顶端
 RAMUS_ICON_STEP_DY   = 62    -- 光标跟着选项走，必须和上面行距一致
