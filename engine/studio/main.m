@@ -48,6 +48,27 @@ static NSSize imageSizeAtPath(NSString *path) {
 }
 @end
 
+@interface PGMDivider : NSView
+@property (copy) void (^onDrag)(CGFloat xInSuperview);
+@end
+@implementation PGMDivider
+- (void)resetCursorRects {
+    [self addCursorRect:self.bounds cursor:NSCursor.resizeLeftRightCursor];
+}
+- (void)drawRect:(NSRect)dirty {
+    [[NSColor separatorColor] setFill];
+    NSRectFill(NSMakeRect(self.bounds.size.width / 2 - 0.5, 0, 1, self.bounds.size.height));
+}
+- (void)mouseDown:(NSEvent *)e {
+    [self mouseDragged:e];
+}
+- (void)mouseDragged:(NSEvent *)e {
+    if (!self.onDrag) return;
+    NSPoint pt = [self.superview convertPoint:e.locationInWindow fromView:nil];
+    self.onDrag(pt.x);
+}
+@end
+
 @interface PGMPassLabel : NSTextField
 @end
 @implementation PGMPassLabel
@@ -90,6 +111,9 @@ static NSSize imageSizeAtPath(NSString *path) {
 @property (assign) NSInteger previewOptionCount;
 @property (strong) NSTextField *fitWarning;
 @property (strong) NSArray<NSDictionary *> *swapSpecs;
+@property (strong) NSScrollView *layoutPanel;
+@property (strong) PGMDivider *layoutDivider;
+@property (assign) CGFloat layoutPanelWidth;
 @end
 
 @implementation StudioController
@@ -520,6 +544,7 @@ static BOOL isAudio(NSString *p) {
 
 - (void)windowDidResize:(NSNotification *)n {
     [self rebuildGrid];
+    [self layoutPanes];
 }
 
 - (NSString *)templateRoot {
@@ -810,8 +835,52 @@ static BOOL isAudio(NSString *p) {
                               NSForegroundColorAttributeName: (k == self.selItem ? NSColor.controlAccentColor
                                                                                 : NSColor.secondaryLabelColor),
                               NSParagraphStyleAttributeName: ps }];
+        NSMenu *menu = [NSMenu new];
+        NSMenuItem *it1 = [[NSMenuItem alloc] initWithTitle:@"在访达中显示"
+                                                     action:@selector(revealAsset:)
+                                              keyEquivalent:@""];
+        it1.target = self; it1.tag = k;
+        [menu addItem:it1];
+        NSMenuItem *it2 = [[NSMenuItem alloc] initWithTitle:@"删除文件"
+                                                     action:@selector(deleteAsset:)
+                                              keyEquivalent:@""];
+        it2.target = self; it2.tag = k;
+        [menu addItem:it2];
+        b.menu = menu;
+
         [self.gridDoc addSubview:b];
     }
+}
+
+- (void)revealAsset:(NSMenuItem *)mi {
+    NSArray<AssetItem *> *list = self.assets[self.categories[self.selCat]];
+    if (mi.tag < 0 || mi.tag >= (NSInteger)list.count) return;
+    [NSWorkspace.sharedWorkspace selectFile:list[mi.tag].path inFileViewerRootedAtPath:@""];
+}
+
+- (void)deleteAsset:(NSMenuItem *)mi {
+    NSArray<AssetItem *> *list = self.assets[self.categories[self.selCat]];
+    if (mi.tag < 0 || mi.tag >= (NSInteger)list.count) return;
+    AssetItem *ai = list[mi.tag];
+
+    NSAlert *a = [NSAlert new];
+    a.messageText = @"删除文件";
+    a.informativeText = [NSString stringWithFormat:@"确定删除「%@」吗？\n\n这个操作不可撤销。", ai.name];
+    [a addButtonWithTitle:@"删除"];
+    [a addButtonWithTitle:@"取消"];
+    a.alertStyle = NSAlertStyleWarning;
+    if ([a runModal] != NSAlertFirstButtonReturn) return;
+
+    NSError *err = nil;
+    if (![NSFileManager.defaultManager removeItemAtPath:ai.path error:&err]) {
+        NSAlert *e = [NSAlert new];
+        e.messageText = @"删除失败";
+        e.informativeText = err.localizedDescription ?: @"";
+        [e runModal];
+        return;
+    }
+    [self loadProject:self.projectRoot];
+    self.status.stringValue = [NSString stringWithFormat:@"已删除 %@", ai.name];
 }
 
 - (void)importFiles:(NSArray<NSURL *> *)urls {
@@ -1025,22 +1094,26 @@ static BOOL isAudio(NSString *p) {
     sv.drawsBackground = NO;
     sv.documentView = doc;
 
-    CGFloat splitH = body.size.height - 38;
+    self.layoutPanelWidth = panelW;
+    self.layoutPanel = sv;
+    [self.layoutView addSubview:sv];
+
+    Class dv = NSClassFromString(@"PGMDivider");
+    self.layoutDivider = [[dv alloc] initWithFrame:NSMakeRect(panelW, 0, 6, body.size.height - 38)];
+    self.layoutDivider.autoresizingMask = NSViewHeightSizable;
+    __weak typeof(self) ws = self;
+    self.layoutDivider.onDrag = ^(CGFloat x) {
+        CGFloat w = MIN(MAX(x, 300), ws.layoutView.bounds.size.width - 240);
+        ws.layoutPanelWidth = w;
+        [ws layoutPanes];
+    };
+    [self.layoutView addSubview:self.layoutDivider];
+
     Class pv = NSClassFromString(@"PGMPreviewView");
-    self.previewView = [[pv alloc] initWithFrame:NSMakeRect(0, 0, body.size.width - panelW, splitH)];
-    NSView *v = (NSView *)self.previewView;
+    self.previewView = [[pv alloc] initWithFrame:NSMakeRect(0, 0, 10, 10)];
+    [self.layoutView addSubview:(NSView *)self.previewView];
 
-    NSSplitView *split = [[NSSplitView alloc] initWithFrame:NSMakeRect(0, 0, body.size.width, splitH)];
-    split.vertical = YES;
-    split.dividerStyle = NSSplitViewDividerStyleThin;
-    split.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
-    sv.frame = NSMakeRect(0, 0, panelW, splitH);
-    [split addSubview:sv];
-    [split addSubview:v];
-    [split setHoldingPriority:260 forSubviewAtIndex:0];
-    [split setPosition:panelW ofDividerAtIndex:0];
-
-    [self.layoutView addSubview:split];
+    [self layoutPanes];
 }
 
 - (void)layoutSliderChanged:(NSSlider *)sl {
@@ -1084,6 +1157,18 @@ static BOOL isAudio(NSString *p) {
     [self.previewView setValue:@YES forKey:@"showHand"];
     [self.previewView setValue:@(2) forKey:@"optionCount"];
     [(NSView *)self.previewView setNeedsDisplay:YES];
+}
+
+- (void)layoutPanes {
+    if (!self.layoutView) return;
+    CGFloat W = self.layoutView.bounds.size.width;
+    CGFloat H = self.layoutView.bounds.size.height - 38;
+    CGFloat pw = self.layoutPanelWidth;
+    self.layoutPanel.frame = NSMakeRect(0, 0, pw, H);
+    self.layoutDivider.frame = NSMakeRect(pw, 0, 6, H);
+    NSView *pv = (NSView *)self.previewView;
+    pv.frame = NSMakeRect(pw + 6, 0, MAX(W - pw - 6, 10), H);
+    [pv setNeedsDisplay:YES];
 }
 
 - (void)swapAsset:(NSButton *)b {
