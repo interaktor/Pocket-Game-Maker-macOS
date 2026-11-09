@@ -55,5 +55,6 @@ PY
 
 echo ">> 生成 ISO"
 rm -f "$OUT"
-hdiutil makehybrid -o "$OUT" -iso -joliet -default-volume-name PSPGAME "$STAGE" >/dev/null
+# 用自带生成器：保留文件名大小写（hdiutil 会强制转大写，PSP 引擎读不到小写路径）
+python3 "$(dirname "$0")/mkiso.py" "$STAGE" "$OUT"
 echo "完成: $OUT ($(du -h "$OUT" | cut -f1))"

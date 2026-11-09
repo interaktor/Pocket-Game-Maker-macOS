@@ -41,6 +41,17 @@ cp -R "$ROOT/bin" "$ROOT/src" "$APP/Contents/Resources/game/"
 rm -rf "$APP/Contents/Resources/game/PGMSAVEDATA"
 find "$APP/Contents/Resources/game" -name '.DS_Store' -delete 2>/dev/null || true
 
+# PSP ISO 模板（内置，用户不需要另下 CE）
+TPL_SRC="$ROOT/../PGM-CE/tools/PGMv0.83主引擎文件/PSP(ISO)"
+if [ -d "$TPL_SRC/PSP_GAME" ]; then
+	echo ">> 内置 PSP 模板"
+	rm -rf "$APP/Contents/Resources/psp-template"
+	mkdir -p "$APP/Contents/Resources/psp-template"
+	cp -R "$TPL_SRC/PSP_GAME" "$APP/Contents/Resources/psp-template/"
+else
+	echo "!! 没找到 PSP 模板，跳过（$TPL_SRC）"
+fi
+
 echo ">> 签名（ad-hoc）"
 codesign --force --deep -s - "$APP" 2>/dev/null || true
 

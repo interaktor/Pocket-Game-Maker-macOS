@@ -726,6 +726,15 @@ static BOOL isAudio(NSString *p) {
 }
 
 - (NSString *)pspTemplate {
+    NSFileManager *fm0 = NSFileManager.defaultManager;
+    NSString *res = NSBundle.mainBundle.resourcePath;
+    if (res) {                                   // 优先用 App 内置的模板
+        NSString *p = [res stringByAppendingPathComponent:@"psp-template"];
+        BOOL isDir = NO;
+        if ([fm0 fileExistsAtPath:[p stringByAppendingPathComponent:@"PSP_GAME"]
+                      isDirectory:&isDir] && isDir)
+            return p;
+    }
     NSString *saved = [NSUserDefaults.standardUserDefaults stringForKey:@"pspTemplate"];
     NSFileManager *fm = NSFileManager.defaultManager;
     BOOL isDir = NO;
