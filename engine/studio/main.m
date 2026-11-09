@@ -1053,8 +1053,10 @@ static BOOL isAudio(NSString *p) {
 
         NSTextField *val = [NSTextField labelWithString:@"—"];
         val.frame = NSMakeRect(276, cy + 10, 148, 18);
-        val.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
+        val.font = [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightMedium];
         val.textColor = NSColor.secondaryLabelColor;
+        val.alignment = NSTextAlignmentRight;
+        val.toolTip = k[0];           // 完整参数名放提示里
         [doc addSubview:val];
 
         [self.layoutRows addObject:@[ sl, val, lbl ]];
@@ -1124,7 +1126,7 @@ static BOOL isAudio(NSString *p) {
 - (void)layoutSliderChanged:(NSSlider *)sl {
     self.layoutValues[sl.identifier] = @(sl.doubleValue);
     NSTextField *val = self.layoutReadouts[sl.identifier];
-    val.stringValue = [NSString stringWithFormat:@"%@ = %d", sl.identifier, (int)sl.doubleValue];
+    val.stringValue = [NSString stringWithFormat:@"%d", (int)sl.doubleValue];
     [self.previewView setValue:self.layoutValues forKey:@"values"];
     [(NSView *)self.previewView setNeedsDisplay:YES];
     self.layoutDirty = YES;
@@ -1173,7 +1175,7 @@ static BOOL isAudio(NSString *p) {
     // 左边内容跟着面板宽度一起伸缩
     if (self.layoutDoc) {
         self.layoutDoc.frame = NSMakeRect(0, 0, pw, self.layoutDoc.frame.size.height);
-        CGFloat valW = 150, valX = pw - valW - 8;
+        CGFloat valW = 64, valX = pw - valW - 12;
         CGFloat sliderX = 96, sliderW = MAX(valX - sliderX - 12, 70);
         for (NSArray *row in self.layoutRows) {
             NSSlider *sl = row[0];
@@ -1281,7 +1283,7 @@ static BOOL isAudio(NSString *p) {
         NSInteger v = [[text substringWithRange:[m rangeAtIndex:1]] integerValue];
         self.layoutValues[key] = @(v);
         NSTextField *val = self.layoutReadouts[key];
-        val.stringValue = [NSString stringWithFormat:@"%@ = %ld", key, (long)v];
+        val.stringValue = [NSString stringWithFormat:@"%ld", (long)v];
     }
     [self.previewView setValue:self.layoutValues forKey:@"values"];
     [(NSView *)self.previewView setNeedsDisplay:YES];
