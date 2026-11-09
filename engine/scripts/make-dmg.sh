@@ -16,6 +16,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$REL/pgm-studio" "$APP/Contents/MacOS/PGM Studio"
 cp "$REL/pgm-mac"    "$APP/Contents/MacOS/pgm-mac"     # 运行按钮要用
 cp "$ROOT/engine/scripts/export-iso.sh" "$APP/Contents/Resources/" 2>/dev/null || true
+cp "$ROOT/engine/scripts/mkiso.py" "$APP/Contents/Resources/" 2>/dev/null || true
+chmod +x "$APP/Contents/Resources/mkiso.py" 2>/dev/null || true
 cp "$ROOT/engine/scripts/export-app.sh" "$APP/Contents/Resources/" 2>/dev/null || true
 cp "$ROOT/engine/studio/Info.plist" "$APP/Contents/" 2>/dev/null || \
 cat > "$APP/Contents/Info.plist" <<'PLIST'
