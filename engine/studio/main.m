@@ -31,6 +31,12 @@ static NSSize imageSizeAtPath(NSString *path) {
 - (BOOL)isFlipped { return YES; }
 @end
 
+@interface PGMPassLabel : NSTextField
+@end
+@implementation PGMPassLabel
+- (NSView *)hitTest:(NSPoint)point { return nil; }   // 标签不吃鼠标事件
+@end
+
 
 @interface StudioController : NSObject <NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSTextViewDelegate>
 @property (strong) NSWindow *window;
@@ -272,14 +278,19 @@ static BOOL isAudio(NSString *p) {
     openBtn.autoresizingMask = NSViewMinYMargin|NSViewMinXMargin;
     [cv addSubview:openBtn];
 
-    self.pathLabel = [NSTextField labelWithString:@"（未打开工程）"];
-    self.pathLabel.frame = NSMakeRect(308, H - 40, W - 446, 18);
+    self.pathLabel = [[PGMPassLabel alloc] initWithFrame:NSMakeRect(16, H - 68, W - 380, 16)];
+    self.pathLabel.stringValue = @"（未打开工程）";
+    self.pathLabel.editable = NO;
+    self.pathLabel.selectable = NO;
+    self.pathLabel.bezeled = NO;
+    self.pathLabel.drawsBackground = NO;
     self.pathLabel.autoresizingMask = NSViewWidthSizable|NSViewMinYMargin;
+    self.pathLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
     self.pathLabel.textColor = NSColor.secondaryLabelColor;
     self.pathLabel.font = [NSFont systemFontOfSize:11];
     [cv addSubview:self.pathLabel];
 
-    NSRect body = NSMakeRect(0, 26, W, H - 74);
+    NSRect body = NSMakeRect(0, 26, W, H - 94);
 
     /* ---------------- 素材页 ---------------- */
     self.assetView = [[NSView alloc] initWithFrame:body];
