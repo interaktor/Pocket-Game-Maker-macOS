@@ -257,6 +257,11 @@ static BOOL isAudio(NSString *p) {
     self.tabs.autoresizingMask = NSViewMinYMargin;
     [cv addSubview:self.tabs];
 
+    NSButton *expBtn = [NSButton buttonWithTitle:@"导出游戏…" target:self action:@selector(exportGame:)];
+    expBtn.frame = NSMakeRect(W - 366, H - 46, 110, 30);
+    expBtn.autoresizingMask = NSViewMinYMargin|NSViewMinXMargin;
+    [cv addSubview:expBtn];
+
     NSButton *newBtn = [NSButton buttonWithTitle:@"新建工程…" target:self action:@selector(newProject:)];
     newBtn.frame = NSMakeRect(W - 246, H - 46, 110, 30);
     newBtn.autoresizingMask = NSViewMinYMargin|NSViewMinXMargin;
@@ -557,6 +562,82 @@ static BOOL isAudio(NSString *p) {
 
     [self loadProject:dest];
     self.status.stringValue = [NSString stringWithFormat:@"已新建 %@", dest];
+}
+
+- (NSString *)exportScriptPath {
+    NSString *res = NSBundle.mainBundle.resourcePath;
+    if (res) {
+        NSString *p = [res stringByAppendingPathComponent:@"export-app.sh"];
+        if ([NSFileManager.defaultManager isExecutableFileAtPath:p]) return p;
+    }
+    // 从源码跑：二进制在 build/Release/ 下，往上两层是仓库根
+    NSString *exeDir = NSBundle.mainBundle.executablePath.stringByDeletingLastPathComponent;
+    NSString *repo = [exeDir stringByDeletingLastPathComponent].stringByDeletingLastPathComponent;
+    NSString *p = [repo stringByAppendingPathComponent:@"engine/scripts/export-app.sh"];
+    if ([NSFileManager.defaultManager isExecutableFileAtPath:p]) return p;
+    return nil;
+}
+
+- (void)exportGame:(id)sender {
+    if (!self.projectRoot) {
+        self.status.stringValue = @"先打开一个工程";
+        return;
+    }
+    NSString *script = [self exportScriptPath];
+    NSString *exeDir = NSBundle.mainBundle.executablePath.stringByDeletingLastPathComponent;
+    NSString *engine = [exeDir stringByAppendingPathComponent:@"pgm-mac"];
+    if (!script || ![NSFileManager.defaultManager isExecutableFileAtPath:engine]) {
+        self.status.stringValue = @"找不到导出脚本或引擎";
+        return;
+    }
+
+    NSAlert *a = [NSAlert new];
+    a.messageText = @"导出游戏";
+    a.informativeText = @"给这个游戏起个名字（就是 .app 的名字）：";
+    [a addButtonWithTitle:@"下一步"];
+    [a addButtonWithTitle:@"取消"];
+    NSTextField *tf = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+    tf.stringValue = self.projectRoot.lastPathComponent;
+    a.accessoryView = tf;
+    if ([a runModal] != NSAlertFirstButtonReturn) return;
+    NSString *name = tf.stringValue.length ? tf.stringValue : @"MyGame";
+
+    NSOpenPanel *op = [NSOpenPanel openPanel];
+    op.canChooseDirectories = YES;
+    op.canChooseFiles = NO;
+    op.canCreateDirectories = YES;
+    op.prompt = @"导出到这里";
+    op.message = @"选一个文件夹放导出的 .app";
+    if ([op runModal] != NSModalResponseOK || !op.URL) return;
+
+    NSString *out = [[op.URL.path stringByAppendingPathComponent:name]
+                        stringByAppendingPathExtension:@"app"];
+
+    self.status.stringValue = @"正在导出…";
+    dispatch_async(dispatch_get_global_queue(0, 0), ^{
+        NSTask *t = [NSTask new];
+        t.executableURL = [NSURL fileURLWithPath:@"/bin/sh"];
+        t.arguments = @[ script, engine, self.projectRoot, out, name ];
+        NSPipe *pipe = [NSPipe pipe];
+        t.standardOutput = pipe;
+        t.standardError = pipe;
+        NSError *err = nil;
+        BOOL ok = [t launchAndReturnError:&err] && ([t waitUntilExit], t.terminationStatus == 0);
+        NSData *d = [pipe.fileHandleForReading readDataToEndOfFile];
+        NSString *log = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] ?: @"";
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (ok) {
+                self.status.stringValue = [NSString stringWithFormat:@"导出完成：%@", out];
+                [NSWorkspace.sharedWorkspace selectFile:out inFileViewerRootedAtPath:@""];
+            } else {
+                self.status.stringValue = @"导出失败，看下面的提示";
+                NSAlert *e2 = [NSAlert new];
+                e2.messageText = @"导出失败";
+                e2.informativeText = log.length > 2000 ? [log substringToIndex:2000] : log;
+                [e2 runModal];
+            }
+        });
+    });
 }
 
 - (void)openProject:(id)sender {
