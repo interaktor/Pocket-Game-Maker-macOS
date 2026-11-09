@@ -326,17 +326,17 @@ static BOOL isAudio(NSString *p) {
     [cv addSubview:self.tabs];
 
     NSButton *recentBtn = [NSButton buttonWithTitle:@"最近…" target:self action:@selector(showRecent:)];
-    recentBtn.frame = NSMakeRect(W - 570, H - 46, 78, 30);
+    recentBtn.frame = NSMakeRect(W - 576, H - 46, 78, 30);
     recentBtn.autoresizingMask = NSViewMinYMargin|NSViewMinXMargin;
     [cv addSubview:recentBtn];
 
     NSButton *isoBtn = [NSButton buttonWithTitle:@"导出 ISO…" target:self action:@selector(exportISO:)];
-    isoBtn.frame = NSMakeRect(W - 486, H - 46, 110, 30);
+    isoBtn.frame = NSMakeRect(W - 490, H - 46, 112, 30);
     isoBtn.autoresizingMask = NSViewMinYMargin|NSViewMinXMargin;
     [cv addSubview:isoBtn];
 
     NSButton *expBtn = [NSButton buttonWithTitle:@"导出游戏…" target:self action:@selector(exportGame:)];
-    expBtn.frame = NSMakeRect(W - 366, H - 46, 110, 30);
+    expBtn.frame = NSMakeRect(W - 370, H - 46, 114, 30);
     expBtn.autoresizingMask = NSViewMinYMargin|NSViewMinXMargin;
     [cv addSubview:expBtn];
 
@@ -764,8 +764,9 @@ static BOOL isAudio(NSString *p) {
 
 - (void)exportISO:(id)sender {
     if (!self.projectRoot) { self.status.stringValue = @"先打开一个工程"; return; }
+
     NSString *tpl = [self pspTemplate];
-    if (!tpl) return;
+    if (!tpl) { self.status.stringValue = @"找不到 PSP 模板"; return; }
 
     NSString *script = nil;
     NSString *res = NSBundle.mainBundle.resourcePath;
@@ -781,27 +782,17 @@ static BOOL isAudio(NSString *p) {
     }
     if (!script) { self.status.stringValue = @"找不到 export-iso.sh"; return; }
 
-    NSAlert *a = [NSAlert new];
-    a.messageText = @"导出 PSP ISO";
-    a.informativeText = @"ISO 文件名最好用英文或数字（PSP 系统限制）：";
-    [a addButtonWithTitle:@"下一步"];
-    [a addButtonWithTitle:@"取消"];
-    NSTextField *tf = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
-    tf.stringValue = self.projectRoot.lastPathComponent;
-    a.accessoryView = tf;
-    if ([a runModal] != NSAlertFirstButtonReturn) return;
-    NSString *name = tf.stringValue.length ? tf.stringValue : @"PGMGame";
+    // 文件名只用 ASCII，PSP 系统限制
+    NSMutableString *ascii = [NSMutableString string];
+    for (NSUInteger i = 0; i < self.projectRoot.lastPathComponent.length; i++) {
+        unichar c = [self.projectRoot.lastPathComponent characterAtIndex:i];
+        [ascii appendFormat:@"%c", (c < 128 ? c : '_')];
+    }
+    NSString *name = ascii.length ? ascii : @"PGMGame";
+    NSString *out = [NSHomeDirectory() stringByAppendingPathComponent:
+                        [NSString stringWithFormat:@"Desktop/%@.iso", name]];
 
-    NSOpenPanel *op = [NSOpenPanel openPanel];
-    op.canChooseDirectories = YES;
-    op.canChooseFiles = NO;
-    op.canCreateDirectories = YES;
-    op.prompt = @"导出到这里";
-    if ([op runModal] != NSModalResponseOK || !op.URL) return;
-
-    NSString *out = [[op.URL.path stringByAppendingPathComponent:name]
-                        stringByAppendingPathExtension:@"iso"];
-    self.status.stringValue = @"正在生成 ISO…";
+    self.status.stringValue = @"正在生成 ISO…（大约十几秒）";
 
     dispatch_async(dispatch_get_global_queue(0, 0), ^{
         NSTask *t = [NSTask new];
@@ -814,7 +805,7 @@ static BOOL isAudio(NSString *p) {
         NSString *log = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] ?: @"";
         dispatch_async(dispatch_get_main_queue(), ^{
             if (ok) {
-                self.status.stringValue = [NSString stringWithFormat:@"ISO 已生成：%@", out];
+                self.status.stringValue = [NSString stringWithFormat:@"ISO 已生成到桌面：%@", out.lastPathComponent];
                 [NSWorkspace.sharedWorkspace selectFile:out inFileViewerRootedAtPath:@""];
             } else {
                 self.status.stringValue = @"ISO 生成失败";
