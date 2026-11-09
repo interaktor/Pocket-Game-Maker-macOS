@@ -326,9 +326,14 @@ static BOOL isAudio(NSString *p) {
     [cv addSubview:self.tabs];
 
     NSButton *recentBtn = [NSButton buttonWithTitle:@"最近…" target:self action:@selector(showRecent:)];
-    recentBtn.frame = NSMakeRect(W - 456, H - 46, 78, 30);
+    recentBtn.frame = NSMakeRect(W - 570, H - 46, 78, 30);
     recentBtn.autoresizingMask = NSViewMinYMargin|NSViewMinXMargin;
     [cv addSubview:recentBtn];
+
+    NSButton *isoBtn = [NSButton buttonWithTitle:@"导出 ISO…" target:self action:@selector(exportISO:)];
+    isoBtn.frame = NSMakeRect(W - 486, H - 46, 110, 30);
+    isoBtn.autoresizingMask = NSViewMinYMargin|NSViewMinXMargin;
+    [cv addSubview:isoBtn];
 
     NSButton *expBtn = [NSButton buttonWithTitle:@"导出游戏…" target:self action:@selector(exportGame:)];
     expBtn.frame = NSMakeRect(W - 366, H - 46, 110, 30);
@@ -718,6 +723,102 @@ static BOOL isAudio(NSString *p) {
         [self loadProject:p];
         self.status.stringValue = [NSString stringWithFormat:@"已打开 %@", p.lastPathComponent];
     }
+}
+
+- (NSString *)pspTemplate {
+    NSString *saved = [NSUserDefaults.standardUserDefaults stringForKey:@"pspTemplate"];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    BOOL isDir = NO;
+    if (saved.length && [fm fileExistsAtPath:[saved stringByAppendingPathComponent:@"PSP_GAME"]
+                                 isDirectory:&isDir] && isDir)
+        return saved;
+
+    NSAlert *a = [NSAlert new];
+    a.messageText = @"第一次导出 ISO，需要 PSP 模板";
+    a.informativeText = @"选择 PGM 原版里的 PSP(ISO) 文件夹（里面有 PSP_GAME）。\n"
+                         "位置在：PGM_CE/tools/PGMv0.83主引擎文件/PSP(ISO)";
+    [a addButtonWithTitle:@"选择…"];
+    [a addButtonWithTitle:@"取消"];
+    if ([a runModal] != NSAlertFirstButtonReturn) return nil;
+
+    NSOpenPanel *op = [NSOpenPanel openPanel];
+    op.canChooseDirectories = YES;
+    op.canChooseFiles = NO;
+    op.message = @"选 PSP(ISO) 文件夹";
+    if ([op runModal] != NSModalResponseOK || !op.URL) return nil;
+    if (![fm fileExistsAtPath:[op.URL.path stringByAppendingPathComponent:@"PSP_GAME"]]) {
+        NSAlert *e = [NSAlert new];
+        e.messageText = @"这个文件夹里没有 PSP_GAME";
+        [e runModal];
+        return nil;
+    }
+    [NSUserDefaults.standardUserDefaults setObject:op.URL.path forKey:@"pspTemplate"];
+    return op.URL.path;
+}
+
+- (void)exportISO:(id)sender {
+    if (!self.projectRoot) { self.status.stringValue = @"先打开一个工程"; return; }
+    NSString *tpl = [self pspTemplate];
+    if (!tpl) return;
+
+    NSString *script = nil;
+    NSString *res = NSBundle.mainBundle.resourcePath;
+    if (res) {
+        NSString *p = [res stringByAppendingPathComponent:@"export-iso.sh"];
+        if ([NSFileManager.defaultManager isExecutableFileAtPath:p]) script = p;
+    }
+    if (!script) {
+        NSString *exeDir = NSBundle.mainBundle.executablePath.stringByDeletingLastPathComponent;
+        NSString *repo = [exeDir stringByDeletingLastPathComponent].stringByDeletingLastPathComponent;
+        NSString *p = [repo stringByAppendingPathComponent:@"engine/scripts/export-iso.sh"];
+        if ([NSFileManager.defaultManager isExecutableFileAtPath:p]) script = p;
+    }
+    if (!script) { self.status.stringValue = @"找不到 export-iso.sh"; return; }
+
+    NSAlert *a = [NSAlert new];
+    a.messageText = @"导出 PSP ISO";
+    a.informativeText = @"ISO 文件名最好用英文或数字（PSP 系统限制）：";
+    [a addButtonWithTitle:@"下一步"];
+    [a addButtonWithTitle:@"取消"];
+    NSTextField *tf = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+    tf.stringValue = self.projectRoot.lastPathComponent;
+    a.accessoryView = tf;
+    if ([a runModal] != NSAlertFirstButtonReturn) return;
+    NSString *name = tf.stringValue.length ? tf.stringValue : @"PGMGame";
+
+    NSOpenPanel *op = [NSOpenPanel openPanel];
+    op.canChooseDirectories = YES;
+    op.canChooseFiles = NO;
+    op.canCreateDirectories = YES;
+    op.prompt = @"导出到这里";
+    if ([op runModal] != NSModalResponseOK || !op.URL) return;
+
+    NSString *out = [[op.URL.path stringByAppendingPathComponent:name]
+                        stringByAppendingPathExtension:@"iso"];
+    self.status.stringValue = @"正在生成 ISO…";
+
+    dispatch_async(dispatch_get_global_queue(0, 0), ^{
+        NSTask *t = [NSTask new];
+        t.executableURL = [NSURL fileURLWithPath:@"/bin/sh"];
+        t.arguments = @[ script, self.projectRoot, out, name, tpl ];
+        NSPipe *pipe = [NSPipe pipe];
+        t.standardOutput = pipe; t.standardError = pipe;
+        BOOL ok = [t launchAndReturnError:NULL] && ([t waitUntilExit], t.terminationStatus == 0);
+        NSData *d = [pipe.fileHandleForReading readDataToEndOfFile];
+        NSString *log = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] ?: @"";
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (ok) {
+                self.status.stringValue = [NSString stringWithFormat:@"ISO 已生成：%@", out];
+                [NSWorkspace.sharedWorkspace selectFile:out inFileViewerRootedAtPath:@""];
+            } else {
+                self.status.stringValue = @"ISO 生成失败";
+                NSAlert *e = [NSAlert new];
+                e.messageText = @"导出 ISO 失败";
+                e.informativeText = log.length > 1500 ? [log substringToIndex:1500] : log;
+                [e runModal];
+            }
+        });
+    });
 }
 
 - (void)exportGame:(id)sender {
