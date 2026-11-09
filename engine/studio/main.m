@@ -1080,14 +1080,14 @@ static BOOL isAudio(NSString *p) {
             NSTextField *info = [NSTextField labelWithString:
                 [NSString stringWithFormat:@"%@  (%@×%@)",
                     d[@"file"], d[@"w"], d[@"h"]]];
-            info.frame = NSMakeRect(100, cy + 10, 190, 18);
+            info.frame = NSMakeRect(100, cy + 10, 168, 18);
             info.font = [NSFont monospacedSystemFontOfSize:10 weight:NSFontWeightRegular];
             info.textColor = NSColor.secondaryLabelColor;
             info.lineBreakMode = NSLineBreakByTruncatingMiddle;
             [doc addSubview:info];
 
-            NSButton *sw = [NSButton buttonWithTitle:@"换…" target:self action:@selector(swapAsset:)];
-            sw.frame = NSMakeRect(296, cy + 6, 60, 26);
+            NSButton *sw = [NSButton buttonWithTitle:@"换图片…" target:self action:@selector(swapAsset:)];
+            sw.frame = NSMakeRect(272, cy + 4, 92, 28);
             sw.tag = [self.swapSpecs indexOfObject:d];
             sw.bezelStyle = NSBezelStyleRounded;
             [doc addSubview:sw];
@@ -1168,8 +1168,13 @@ static BOOL isAudio(NSString *p) {
     self.previewOffsetLabel.autoresizingMask = NSViewMinXMargin;
     [self.layoutView addSubview:self.previewOffsetLabel];
 
-    self.fitWarning = [NSTextField labelWithString:@""];
-    self.fitWarning.frame = NSMakeRect(324, body.size.height - 28, body.size.width - 340, 18);
+    self.fitWarning = [[PGMPassLabel alloc] initWithFrame:
+        NSMakeRect(324, body.size.height - 28, MAX(body.size.width - 560, 120), 18)];
+    self.fitWarning.stringValue = @"";
+    self.fitWarning.bezeled = NO;
+    self.fitWarning.drawsBackground = NO;
+    self.fitWarning.editable = NO;
+    self.fitWarning.selectable = NO;
     self.fitWarning.font = [NSFont systemFontOfSize:11];
     self.fitWarning.textColor = NSColor.systemRedColor;
     self.fitWarning.autoresizingMask = NSViewWidthSizable;
@@ -1242,7 +1247,6 @@ static BOOL isAudio(NSString *p) {
     [self.previewView setValue:img(@"ramus_bg.png")  forKey:@"ramusImage"];
     [self.previewView setValue:img(@"hand_icon02.png") forKey:@"handImage"];
     self.previewOptionCount = 2;
-    [self.previewView setValue:@YES forKey:@"showHand"];
     [self.previewView setValue:@(2) forKey:@"optionCount"];
     [(NSView *)self.previewView setNeedsDisplay:YES];
 }
