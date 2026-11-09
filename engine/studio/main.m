@@ -111,6 +111,7 @@ static NSSize imageSizeAtPath(NSString *path) {
 @property (assign) NSInteger previewOptionCount;
 @property (strong) NSTextField *fitWarning;
 @property (assign) BOOL showHandInGame;
+@property (strong) NSTextField *previewOffsetLabel;
 @property (strong) NSArray<NSDictionary *> *swapSpecs;
 @property (strong) NSScrollView *layoutPanel;
 @property (strong) PGMDivider *layoutDivider;
@@ -181,6 +182,14 @@ static BOOL isAudio(NSString *p) {
     self.window.title = [NSString stringWithFormat:@"PGM Studio — %@", root.lastPathComponent];
     self.selItem = -1;
     [NSUserDefaults.standardUserDefaults setObject:root forKey:@"lastProject"];
+    {
+        NSMutableArray *rec = [[NSUserDefaults.standardUserDefaults
+            arrayForKey:@"recentProjects"] mutableCopy] ?: [NSMutableArray array];
+        [rec removeObject:root];
+        [rec insertObject:root atIndex:0];
+        while (rec.count > 8) [rec removeLastObject];
+        [NSUserDefaults.standardUserDefaults setObject:rec forKey:@"recentProjects"];
+    }
     [self.assets removeAllObjects];
     NSFileManager *fm = NSFileManager.defaultManager;
 
@@ -282,6 +291,10 @@ static BOOL isAudio(NSString *p) {
     [self loadLayoutConfig];
     [self loadPreviewImages];
     [self loadGameFont];
+    NSInteger off = [NSUserDefaults.standardUserDefaults integerForKey:@"previewTextOffset"];
+    [self.previewView setValue:@(off) forKey:@"textOffset"];
+    if (self.previewOffsetLabel)
+        self.previewOffsetLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)off];
     for (NSString *k in cats)
         fprintf(stdout, "  %-10s %3lu\n", k.UTF8String, (unsigned long)self.assets[k].count);
     fprintf(stdout, "  合计 %ld\n", (long)n);
@@ -311,6 +324,11 @@ static BOOL isAudio(NSString *p) {
     self.tabs.action = @selector(switchTab:);
     self.tabs.autoresizingMask = NSViewMinYMargin;
     [cv addSubview:self.tabs];
+
+    NSButton *recentBtn = [NSButton buttonWithTitle:@"最近…" target:self action:@selector(showRecent:)];
+    recentBtn.frame = NSMakeRect(W - 456, H - 46, 78, 30);
+    recentBtn.autoresizingMask = NSViewMinYMargin|NSViewMinXMargin;
+    [cv addSubview:recentBtn];
 
     NSButton *expBtn = [NSButton buttonWithTitle:@"导出游戏…" target:self action:@selector(exportGame:)];
     expBtn.frame = NSMakeRect(W - 366, H - 46, 110, 30);
@@ -668,6 +686,38 @@ static BOOL isAudio(NSString *p) {
     NSString *p = [repo stringByAppendingPathComponent:@"engine/scripts/export-app.sh"];
     if ([NSFileManager.defaultManager isExecutableFileAtPath:p]) return p;
     return nil;
+}
+
+- (void)showRecent:(NSButton *)b {
+    NSArray *rec = [NSUserDefaults.standardUserDefaults arrayForKey:@"recentProjects"] ?: @[];
+    if (!rec.count) {
+        self.status.stringValue = @"还没有打开过别的工程";
+        return;
+    }
+    NSMenu *m = [NSMenu new];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    for (NSString *p in rec) {
+        BOOL isDir = NO;
+        BOOL alive = [fm fileExistsAtPath:p isDirectory:&isDir] && isDir;
+        NSMenuItem *it = [[NSMenuItem alloc]
+            initWithTitle:[NSString stringWithFormat:@"%@%@", p.lastPathComponent, alive ? @"" : @"（已失效）"]
+                   action:@selector(openRecent:)
+            keyEquivalent:@""];
+        it.target = self;
+        it.representedObject = p;
+        it.enabled = alive;
+        it.toolTip = p;
+        [m addItem:it];
+    }
+    [m popUpMenuPositioningItem:nil atLocation:NSMakePoint(0, b.bounds.size.height + 4) inView:b];
+}
+
+- (void)openRecent:(NSMenuItem *)mi {
+    NSString *p = mi.representedObject;
+    if (p) {
+        [self loadProject:p];
+        self.status.stringValue = [NSString stringWithFormat:@"已打开 %@", p.lastPathComponent];
+    }
 }
 
 - (void)exportGame:(id)sender {
@@ -1096,6 +1146,28 @@ static BOOL isAudio(NSString *p) {
     oc.action = @selector(optionCountChanged:);
     [self.layoutView addSubview:oc];
 
+    NSTextField *offLbl = [NSTextField labelWithString:@"预览偏移"];
+    offLbl.frame = NSMakeRect(body.size.width - 216, body.size.height - 27, 62, 18);
+    offLbl.font = [NSFont systemFontOfSize:11];
+    offLbl.textColor = NSColor.secondaryLabelColor;
+    offLbl.autoresizingMask = NSViewMinXMargin;
+    [self.layoutView addSubview:offLbl];
+
+    NSStepper *stepper = [[NSStepper alloc] initWithFrame:NSMakeRect(body.size.width - 60, body.size.height - 30, 20, 26)];
+    stepper.minValue = -8; stepper.maxValue = 8; stepper.increment = 1;
+    stepper.valueWraps = NO;
+    stepper.target = self;
+    stepper.action = @selector(previewOffsetChanged:);
+    stepper.autoresizingMask = NSViewMinXMargin;
+    [self.layoutView addSubview:stepper];
+
+    self.previewOffsetLabel = [NSTextField labelWithString:@"0"];
+    self.previewOffsetLabel.frame = NSMakeRect(body.size.width - 96, body.size.height - 27, 30, 18);
+    self.previewOffsetLabel.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightMedium];
+    self.previewOffsetLabel.alignment = NSTextAlignmentRight;
+    self.previewOffsetLabel.autoresizingMask = NSViewMinXMargin;
+    [self.layoutView addSubview:self.previewOffsetLabel];
+
     self.fitWarning = [NSTextField labelWithString:@""];
     self.fitWarning.frame = NSMakeRect(324, body.size.height - 28, body.size.width - 340, 18);
     self.fitWarning.font = [NSFont systemFontOfSize:11];
@@ -1244,6 +1316,14 @@ static BOOL isAudio(NSString *p) {
     [self rebuildGrid];
     self.status.stringValue = [NSString stringWithFormat:
         @"已替换 %@，原图备份为 %@", fname, bak.lastPathComponent];
+}
+
+- (void)previewOffsetChanged:(NSStepper *)st {
+    NSInteger v = (NSInteger)st.doubleValue;
+    [NSUserDefaults.standardUserDefaults setInteger:v forKey:@"previewTextOffset"];
+    [self.previewView setValue:@(v) forKey:@"textOffset"];
+    self.previewOffsetLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)v];
+    [(NSView *)self.previewView setNeedsDisplay:YES];
 }
 
 - (void)handToggle:(NSButton *)b {
@@ -1404,6 +1484,7 @@ static BOOL isAudio(NSString *p) {
 @property (strong) NSImage *handImage;
 @property (assign) NSInteger optionCount;
 @property (assign) BOOL showHand;
+@property (assign) NSInteger textOffset;
 @property (strong) NSFont *gameFont;
 @end
 
@@ -1489,7 +1570,7 @@ static BOOL isAudio(NSString *p) {
     [[NSColor colorWithCalibratedRed:1 green:0.2 blue:0.2 alpha:0.55] setStroke];
     NSBezierPath *nbox = [NSBezierPath bezierPathWithRect:NSMakeRect(nameDX, nameDY, 32, 18)];
     nbox.lineWidth = 1; [nbox stroke];
-    [@"人名" drawInRect:NSMakeRect(nameDX, nameDY, 32, 18) withAttributes:attr];
+    [@"人名" drawInRect:NSMakeRect(nameDX, nameDY + self.textOffset, 32, 18) withAttributes:attr];
 
     // 正文：字格边界 + 每字 16 宽
     int cols = MIN(lineLen, 24);
@@ -1499,7 +1580,7 @@ static BOOL isAudio(NSString *p) {
             NSMakeRect(textDX, textDY + i * 18, cols * 16, 18)];
         rb.lineWidth = 1; [rb stroke];
         for (int c = 0; c < cols; c++)
-            [@"字" drawInRect:NSMakeRect(textDX + c * 16, textDY + i * 18, 16, 18)
+            [@"字" drawInRect:NSMakeRect(textDX + c * 16, textDY + i * 18 + self.textOffset, 16, 18)
                withAttributes:attr];
     }
 
