@@ -257,6 +257,11 @@ static BOOL isAudio(NSString *p) {
     self.tabs.autoresizingMask = NSViewMinYMargin;
     [cv addSubview:self.tabs];
 
+    NSButton *newBtn = [NSButton buttonWithTitle:@"新建工程…" target:self action:@selector(newProject:)];
+    newBtn.frame = NSMakeRect(W - 246, H - 46, 110, 30);
+    newBtn.autoresizingMask = NSViewMinYMargin|NSViewMinXMargin;
+    [cv addSubview:newBtn];
+
     NSButton *openBtn = [NSButton buttonWithTitle:@"打开工程…" target:self action:@selector(openProject:)];
     openBtn.frame = NSMakeRect(W - 126, H - 46, 110, 30);
     openBtn.autoresizingMask = NSViewMinYMargin|NSViewMinXMargin;
@@ -472,6 +477,86 @@ static BOOL isAudio(NSString *p) {
 
 - (void)windowDidResize:(NSNotification *)n {
     [self rebuildGrid];
+}
+
+- (NSString *)templateRoot {
+    // 优先用打进 App 的工程当模板；从源码跑就用当前工程
+    NSString *res = NSBundle.mainBundle.resourcePath;
+    if (res) {
+        NSString *g = [res stringByAppendingPathComponent:@"game"];
+        BOOL isDir = NO;
+        if ([NSFileManager.defaultManager fileExistsAtPath:g isDirectory:&isDir] && isDir)
+            return g;
+    }
+    return self.projectRoot;
+}
+
+- (void)newProject:(id)sender {
+    NSString *tpl = [self templateRoot];
+    if (!tpl) {
+        self.status.stringValue = @"找不到工程模板";
+        return;
+    }
+
+    NSAlert *a = [NSAlert new];
+    a.messageText = @"新建工程";
+    a.informativeText = @"给新游戏起个名字（建议用英文或数字）：";
+    [a addButtonWithTitle:@"下一步"];
+    [a addButtonWithTitle:@"取消"];
+    NSTextField *tf = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+    tf.placeholderString = @"my-game";
+    a.accessoryView = tf;
+    if ([a runModal] != NSAlertFirstButtonReturn) return;
+
+    NSString *name = tf.stringValue;
+    if (name.length == 0) {
+        self.status.stringValue = @"没起名字，取消";
+        return;
+    }
+
+    NSOpenPanel *op = [NSOpenPanel openPanel];
+    op.canChooseDirectories = YES;
+    op.canChooseFiles = NO;
+    op.canCreateDirectories = YES;
+    op.prompt = @"建在这里";
+    op.message = @"选一个文件夹放新工程";
+    if ([op runModal] != NSModalResponseOK || !op.URL) return;
+
+    NSString *dest = [op.URL.path stringByAppendingPathComponent:name];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if ([fm fileExistsAtPath:dest]) {
+        self.status.stringValue = [NSString stringWithFormat:@"%@ 已经存在", dest];
+        return;
+    }
+
+    NSError *err = nil;
+    [fm createDirectoryAtPath:dest withIntermediateDirectories:YES attributes:nil error:&err];
+    for (NSString *sub in @[@"bin", @"src"]) {
+        NSString *from = [tpl stringByAppendingPathComponent:sub];
+        if (![fm fileExistsAtPath:from]) continue;
+        if (![fm copyItemAtPath:from toPath:[dest stringByAppendingPathComponent:sub] error:&err]) {
+            self.status.stringValue = [NSString stringWithFormat:@"复制失败：%@", err.localizedDescription];
+            return;
+        }
+    }
+
+    // 清掉模板里的存档和示例剧情，换成一个空剧本
+    [fm removeItemAtPath:[dest stringByAppendingPathComponent:@"PGMSAVEDATA"] error:NULL];
+    NSString *user = [dest stringByAppendingPathComponent:@"src/user"];
+    [fm createDirectoryAtPath:user withIntermediateDirectories:YES attributes:nil error:NULL];
+    NSString *emptyScript =
+        @"-- 你的剧本写在这里\n"
+        @"-- 一句台词两行：text(...) 然后 textcl()\n\n"
+        @"*start\n"
+        @"msgboxon()\n\n"
+        @"text(\"第一句台词。\")\n"
+        @"textcl()\n\n"
+        @"jump(\"main.ev\")\n";
+    [emptyScript writeToFile:[user stringByAppendingPathComponent:@"main.ev"]
+                  atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+
+    [self loadProject:dest];
+    self.status.stringValue = [NSString stringWithFormat:@"已新建 %@", dest];
 }
 
 - (void)openProject:(id)sender {
