@@ -945,7 +945,15 @@ static BOOL isAudio(NSString *p) {
                 self.playingPath = ai.path;
                 hint = [NSString stringWithFormat:@"已复制 · 播放中 (%.1fs)", self.player.duration];
             } else {
-                hint = @"已复制 · 无法播放（macOS 不支持 ogg）";
+                NSString *ext = ai.path.pathExtension.lowercaseString;
+                NSDictionary *attr = [NSFileManager.defaultManager
+                    attributesOfItemAtPath:ai.path error:NULL];
+                long long sz = [attr[NSFileSize] longLongValue];
+                NSString *why;
+                if ([ext isEqualToString:@"ogg"])      why = @"macOS 不支持 ogg";
+                else if (sz < 100)                      why = @"文件是空的或损坏";
+                else                                    why = @"这个文件解不开";
+                hint = [NSString stringWithFormat:@"已复制 · 无法播放（%@）", why];
             }
         }
     }
