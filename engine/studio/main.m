@@ -726,26 +726,29 @@ static BOOL isAudio(NSString *p) {
 }
 
 - (NSString *)pspTemplate {
-    NSFileManager *fm0 = NSFileManager.defaultManager;
-    NSString *res = NSBundle.mainBundle.resourcePath;
-    if (res) {                                   // 优先用 App 内置的模板
-        NSString *p = [res stringByAppendingPathComponent:@"psp-template"];
-        BOOL isDir = NO;
-        if ([fm0 fileExistsAtPath:[p stringByAppendingPathComponent:@"PSP_GAME"]
-                      isDirectory:&isDir] && isDir)
-            return p;
-    }
-    NSString *saved = [NSUserDefaults.standardUserDefaults stringForKey:@"pspTemplate"];
     NSFileManager *fm = NSFileManager.defaultManager;
     BOOL isDir = NO;
-    if (saved.length && [fm fileExistsAtPath:[saved stringByAppendingPathComponent:@"PSP_GAME"]
-                                 isDirectory:&isDir] && isDir)
-        return saved;
+    NSMutableArray *cands = [NSMutableArray array];
 
+    NSString *res = NSBundle.mainBundle.resourcePath;      // App 内置
+    if (res) [cands addObject:[res stringByAppendingPathComponent:@"psp-template"]];
+
+    NSString *exeDir = NSBundle.mainBundle.executablePath.stringByDeletingLastPathComponent;
+    NSString *repo = [exeDir stringByDeletingLastPathComponent].stringByDeletingLastPathComponent;
+    [cands addObject:[repo stringByAppendingPathComponent:@"engine/psp-template"]];
+
+    NSString *saved = [NSUserDefaults.standardUserDefaults stringForKey:@"pspTemplate"];
+    if (saved.length) [cands addObject:saved];
+
+    for (NSString *c in cands) {
+        if ([fm fileExistsAtPath:[c stringByAppendingPathComponent:@"PSP_GAME"] isDirectory:&isDir] && isDir)
+            return c;
+    }
+
+    // 都没有才让用户选
     NSAlert *a = [NSAlert new];
-    a.messageText = @"第一次导出 ISO，需要 PSP 模板";
-    a.informativeText = @"选择 PGM 原版里的 PSP(ISO) 文件夹（里面有 PSP_GAME）。\n"
-                         "位置在：PGM_CE/tools/PGMv0.83主引擎文件/PSP(ISO)";
+    a.messageText = @"找不到 PSP 模板";
+    a.informativeText = @"请选择 PGM 原版里的 PSP(ISO) 文件夹（里面有 PSP_GAME）";
     [a addButtonWithTitle:@"选择…"];
     [a addButtonWithTitle:@"取消"];
     if ([a runModal] != NSAlertFirstButtonReturn) return nil;
@@ -753,14 +756,8 @@ static BOOL isAudio(NSString *p) {
     NSOpenPanel *op = [NSOpenPanel openPanel];
     op.canChooseDirectories = YES;
     op.canChooseFiles = NO;
-    op.message = @"选 PSP(ISO) 文件夹";
     if ([op runModal] != NSModalResponseOK || !op.URL) return nil;
-    if (![fm fileExistsAtPath:[op.URL.path stringByAppendingPathComponent:@"PSP_GAME"]]) {
-        NSAlert *e = [NSAlert new];
-        e.messageText = @"这个文件夹里没有 PSP_GAME";
-        [e runModal];
-        return nil;
-    }
+    if (![fm fileExistsAtPath:[op.URL.path stringByAppendingPathComponent:@"PSP_GAME"]]) return nil;
     [NSUserDefaults.standardUserDefaults setObject:op.URL.path forKey:@"pspTemplate"];
     return op.URL.path;
 }

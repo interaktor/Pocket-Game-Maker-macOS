@@ -42,7 +42,7 @@ rm -rf "$APP/Contents/Resources/game/PGMSAVEDATA"
 find "$APP/Contents/Resources/game" -name '.DS_Store' -delete 2>/dev/null || true
 
 # PSP ISO 模板（内置，用户不需要另下 CE）
-TPL_SRC="$ROOT/../PGM-CE/tools/PGMv0.83主引擎文件/PSP(ISO)"
+TPL_SRC="$ROOT/engine/psp-template"
 if [ -d "$TPL_SRC/PSP_GAME" ]; then
 	echo ">> 内置 PSP 模板"
 	rm -rf "$APP/Contents/Resources/psp-template"

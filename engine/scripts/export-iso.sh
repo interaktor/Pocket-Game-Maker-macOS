@@ -7,6 +7,7 @@ GAME="$1"
 OUT="$2"
 TITLE="${3:-PGM Game}"
 TPL="${4:-}"
+[ -n "$TPL" ] || TPL="$(cd "$(dirname "$0")/.." && pwd)/psp-template"
 
 [ -d "$GAME/bin" ] || { echo "!! $GAME 不是 PGM 工程"; exit 1; }
 [ -n "$TPL" ] || { echo "!! 缺少 PSP 模板目录"; exit 1; }
