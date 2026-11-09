@@ -23,7 +23,17 @@ mkdir -p "$OUT/src"
 cp "$ROOT/src/am_start.ev" "$ROOT/src/pubdata.ev" "$OUT/src/"
 cp -R "$ROOT/src/system" "$OUT/src/system"
 cp -R "$ROOT/src/files" "$OUT/src/files"
-cp "$ROOT/run.sh" "$OUT/run.sh"; chmod +x "$OUT/run.sh"
+mkdir -p "$OUT/src/user"
+if [ -f "$ROOT/src/user/config.lua" ]; then cp "$ROOT/src/user/config.lua" "$OUT/src/user/config.lua"; fi
+cat > "$OUT/run.sh" <<'RUNSH'
+#!/bin/sh
+cd "$(dirname "$0")" || exit 1
+for c in "$PGM_MAC_BIN" ../pgm-mac/build/Release/pgm-mac; do
+	[ -n "$c" ] && [ -x "$c" ] && exec "$c" .
+done
+echo "找不到 pgm-mac，请用 PGM Studio 点「运行」"
+RUNSH
+chmod +x "$OUT/run.sh"
 mkdir -p "$OUT/src/user"
 
 # 只保留一张占位背景，清掉示例画册
