@@ -114,6 +114,8 @@ static NSSize imageSizeAtPath(NSString *path) {
 @property (strong) NSScrollView *layoutPanel;
 @property (strong) PGMDivider *layoutDivider;
 @property (assign) CGFloat layoutPanelWidth;
+@property (strong) NSView *layoutDoc;
+@property (strong) NSMutableArray *layoutRows;
 @end
 
 @implementation StudioController
@@ -960,6 +962,7 @@ static BOOL isAudio(NSString *p) {
     self.layoutValues = [NSMutableDictionary dictionary];
     self.layoutReadouts = [NSMutableDictionary dictionary];
     self.layoutSliders = [NSMutableDictionary dictionary];
+    self.layoutRows = [NSMutableArray array];
 
     self.swapSpecs = @[
         @{ @"title": @"对话框",     @"file": @"msgbox01.png",    @"w": @480, @"h": @80  },
@@ -1054,6 +1057,7 @@ static BOOL isAudio(NSString *p) {
         val.textColor = NSColor.secondaryLabelColor;
         [doc addSubview:val];
 
+        [self.layoutRows addObject:@[ sl, val, lbl ]];
         self.layoutReadouts[k[0]] = val;
         self.layoutSliders[k[0]] = sl;
         self.layoutValues[k[0]] = @(sl.doubleValue);
@@ -1093,6 +1097,7 @@ static BOOL isAudio(NSString *p) {
     sv.hasVerticalScroller = YES;
     sv.drawsBackground = NO;
     sv.documentView = doc;
+    self.layoutDoc = doc;
 
     self.layoutPanelWidth = panelW;
     self.layoutPanel = sv;
@@ -1103,7 +1108,7 @@ static BOOL isAudio(NSString *p) {
     self.layoutDivider.autoresizingMask = NSViewHeightSizable;
     __weak typeof(self) ws = self;
     self.layoutDivider.onDrag = ^(CGFloat x) {
-        CGFloat w = MIN(MAX(x, 300), ws.layoutView.bounds.size.width - 240);
+        CGFloat w = MIN(MAX(x, 360), ws.layoutView.bounds.size.width - 240);
         ws.layoutPanelWidth = w;
         [ws layoutPanes];
     };
@@ -1163,7 +1168,20 @@ static BOOL isAudio(NSString *p) {
     if (!self.layoutView) return;
     CGFloat W = self.layoutView.bounds.size.width;
     CGFloat H = self.layoutView.bounds.size.height - 38;
-    CGFloat pw = self.layoutPanelWidth;
+    CGFloat pw = MAX(self.layoutPanelWidth, 360);
+
+    // 左边内容跟着面板宽度一起伸缩
+    if (self.layoutDoc) {
+        self.layoutDoc.frame = NSMakeRect(0, 0, pw, self.layoutDoc.frame.size.height);
+        CGFloat valW = 150, valX = pw - valW - 8;
+        CGFloat sliderX = 96, sliderW = MAX(valX - sliderX - 12, 70);
+        for (NSArray *row in self.layoutRows) {
+            NSSlider *sl = row[0];
+            NSTextField *val = row[1];
+            sl.frame = NSMakeRect(sliderX, sl.frame.origin.y, sliderW, 24);
+            val.frame = NSMakeRect(valX, val.frame.origin.y, valW, 18);
+        }
+    }
     self.layoutPanel.frame = NSMakeRect(0, 0, pw, H);
     self.layoutDivider.frame = NSMakeRect(pw, 0, 6, H);
     NSView *pv = (NSView *)self.previewView;
