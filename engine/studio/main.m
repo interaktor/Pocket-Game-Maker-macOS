@@ -945,6 +945,28 @@ static BOOL isAudio(NSString *p) {
 @end
 
 
+@interface PGMAppDelegate : NSObject <NSApplicationDelegate>
+@end
+@implementation PGMAppDelegate
+
+// 关掉最后一个窗口就退出，别留在 Dock 里
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
+    return YES;
+}
+
+// 点 Dock 图标时把窗口叫回来（万一还有窗口）
+- (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
+    if (!flag) {
+        for (NSWindow *w in sender.windows) {
+            [w makeKeyAndOrderFront:nil];
+            break;
+        }
+    }
+    return YES;
+}
+
+@end
+
 @interface PGMPreviewView : NSView
 @property (strong) NSDictionary<NSString *, NSNumber *> *values;
 @property (strong) NSImage *msgboxImage;
@@ -1098,11 +1120,17 @@ int main(int argc, const char *argv[]) {
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
+        static PGMAppDelegate *delegate = nil;
+        delegate = [PGMAppDelegate new];
+        NSApp.delegate = delegate;
+
         NSMenu *mb = [NSMenu new];
         NSMenuItem *appItem = [NSMenuItem new];
         [mb addItem:appItem];
         NSMenu *appMenu = [NSMenu new];
-        [appMenu addItemWithTitle:@"退出" action:@selector(terminate:) keyEquivalent:@"q"];
+        [appMenu addItemWithTitle:@"隐藏 PGM Studio" action:@selector(hide:) keyEquivalent:@"h"];
+        [appMenu addItem:[NSMenuItem separatorItem]];
+        [appMenu addItemWithTitle:@"退出 PGM Studio" action:@selector(terminate:) keyEquivalent:@"q"];
         appItem.submenu = appMenu;
         NSApp.mainMenu = mb;
 
