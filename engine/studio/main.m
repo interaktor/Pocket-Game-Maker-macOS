@@ -602,11 +602,9 @@ static BOOL isAudio(NSString *p) {
             @"drawtitle(*newgame,*quit)\n\n"
             @"*newgame\n"
             @"bgmstop()\n"
-            @"exit()\n"
             @"jump(\"main.ev\")\n\n"
             @"*quit\n"
             @"bgmstop()\n"
-            @"exit()\n"
             @"jump(\"title.ev\")\n";
         NSError *err = nil;
         if (![title writeToFile:[self titleScriptPath] atomically:YES
