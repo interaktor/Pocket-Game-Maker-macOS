@@ -147,6 +147,7 @@ static NSSize imageSizeAtPath(NSString *path) {
 @property (strong) NSTextField *fitWarning;
 @property (assign) BOOL showHandInGame;
 @property (strong) NSTextField *previewOffsetLabel;
+@property (strong) NSButton *titleChk;
 @property (strong) NSArray<NSDictionary *> *swapSpecs;
 @property (strong) NSScrollView *layoutPanel;
 @property (strong) PGMDivider *layoutDivider;
@@ -323,6 +324,7 @@ static BOOL isAudio(NSString *p) {
     self.status.stringValue = [NSString stringWithFormat:@"共 %ld 个素材，点一下即复制指令", (long)n];
     self.runBtn.enabled = (root.length > 0);
     [self loadScriptList];
+    self.titleChk.state = [self titleSceneEnabled] ? NSControlStateValueOn : NSControlStateValueOff;
     [self loadLayoutConfig];
     [self loadPreviewImages];
     [self loadGameFont];
@@ -439,7 +441,13 @@ static BOOL isAudio(NSString *p) {
     self.scriptView.hidden = YES;
     [cv addSubview:self.scriptView];
 
-    NSScrollView *fsv = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 200, ah)];
+    self.titleChk = [NSButton checkboxWithTitle:@"启动时显示标题画面"
+                                          target:self action:@selector(toggleTitle:)];
+    self.titleChk.frame = NSMakeRect(8, ah - 26, 190, 22);
+    self.titleChk.autoresizingMask = NSViewMinYMargin;
+    [self.scriptView addSubview:self.titleChk];
+
+    NSScrollView *fsv = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 200, ah - 30)];
     fsv.autoresizingMask = NSViewHeightSizable;
     fsv.hasVerticalScroller = YES;
     fsv.drawsBackground = NO;
@@ -563,6 +571,59 @@ static BOOL isAudio(NSString *p) {
     self.saveBtn.enabled = NO;
     self.status.stringValue = [NSString stringWithFormat:@"%@  ·  可直接编辑，保存后重新运行",
                                path.lastPathComponent];
+}
+
+- (NSString *)titleScriptPath {
+    return [self.projectRoot stringByAppendingPathComponent:@"src/user/title.ev"];
+}
+
+- (BOOL)titleSceneEnabled {
+    NSString *am = [self.projectRoot stringByAppendingPathComponent:@"src/am_start.ev"];
+    NSString *t = [self readText:am];
+    return [t containsString:@"jump(\"title.ev\")"];
+}
+
+- (void)toggleTitle:(NSButton *)b {
+    if (!self.projectRoot) return;
+    NSString *am = [self.projectRoot stringByAppendingPathComponent:@"src/am_start.ev"];
+    NSMutableString *t = [[self readText:am] mutableCopy];
+    if (!t.length) { self.status.stringValue = @"找不到 am_start.ev"; return; }
+
+    if (b.state == NSControlStateValueOn) {
+        NSString *title = @"-- 标题画面\n"
+            @"-- 想换背景就把图放进 src/files/bg/ 再改下面这行\n\n"
+            @"*start\n"
+            @"allclear()\n"
+            @"textclear()\n\n"
+            @"bg(\"title.png\")\n"
+            @"bgm(\"natsu.wav\")\n\n"
+            @"SET_TITLE_BUTTON(\"title_start.png\",\"title_quit.png\")\n"
+            @"SET_TITLE_COORD(200,110,0,78)\n"
+            @"drawtitle(*newgame,*quit)\n\n"
+            @"*newgame\n"
+            @"bgmstop()\n"
+            @"exit()\n"
+            @"jump(\"main.ev\")\n\n"
+            @"*quit\n"
+            @"bgmstop()\n"
+            @"exit()\n"
+            @"jump(\"title.ev\")\n";
+        NSError *err = nil;
+        if (![title writeToFile:[self titleScriptPath] atomically:YES
+                       encoding:NSUTF8StringEncoding error:&err]) {
+            self.status.stringValue = @"写标题脚本失败";
+            return;
+        }
+        [t replaceOccurrencesOfString:@"jump(\"main.ev\")" withString:@"jump(\"title.ev\")"
+                              options:0 range:NSMakeRange(0, t.length)];
+        self.status.stringValue = @"已启用标题画面（记得放一张 title.png 当背景）";
+    } else {
+        [t replaceOccurrencesOfString:@"jump(\"title.ev\")" withString:@"jump(\"main.ev\")"
+                              options:0 range:NSMakeRange(0, t.length)];
+        self.status.stringValue = @"已关闭标题画面，启动后直接进剧情";
+    }
+    [t writeToFile:am atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+    [self loadScriptList];
 }
 
 - (void)saveScript:(id)sender {
