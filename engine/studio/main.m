@@ -15,6 +15,41 @@ static const CGFloat kThumbW = 128, kThumbH = 90;
 @end
 @implementation AssetItem @end
 
+static NSData *cropAndScale(NSString *path, NSRect cropRect, NSSize target) {
+    CGImageSourceRef src = CGImageSourceCreateWithURL(
+        (__bridge CFURLRef)[NSURL fileURLWithPath:path], NULL);
+    if (!src) return nil;
+    CGImageRef full = CGImageSourceCreateImageAtIndex(src, 0, NULL);
+    CFRelease(src);
+    if (!full) return nil;
+    CGImageRef piece = NULL;
+    if (cropRect.size.width > 0 && cropRect.size.height > 0)
+        piece = CGImageCreateWithImageInRect(full, cropRect);
+    CGImageRef use = piece ? piece : full;
+    size_t w = (size_t)target.width, h = (size_t)target.height;
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(NULL, w, h, 8, w * 4, cs,
+        kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(cs);
+    if (!ctx) { if (piece) CGImageRelease(piece); CGImageRelease(full); return nil; }
+    CGContextSetInterpolationQuality(ctx, kCGInterpolationHigh);
+    CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), use);
+    CGImageRef out = CGBitmapContextCreateImage(ctx);
+    CGContextRelease(ctx);
+    if (piece) CGImageRelease(piece);
+    CGImageRelease(full);
+    if (!out) return nil;
+    NSMutableData *md = [NSMutableData data];
+    CGImageDestinationRef dst = CGImageDestinationCreateWithData(
+        (__bridge CFMutableDataRef)md, (__bridge CFStringRef)@"public.png", 1, NULL);
+    if (!dst) { CGImageRelease(out); return nil; }
+    CGImageDestinationAddImage(dst, out, NULL);
+    CGImageDestinationFinalize(dst);
+    CFRelease(dst);
+    CGImageRelease(out);
+    return md;
+}
+
 static NSSize imageSizeAtPath(NSString *path) {
     CGImageSourceRef src = CGImageSourceCreateWithURL(
         (__bridge CFURLRef)[NSURL fileURLWithPath:path], NULL);
@@ -1189,6 +1224,13 @@ static BOOL isAudio(NSString *p) {
             sw.tag = [self.swapSpecs indexOfObject:d];
             sw.bezelStyle = NSBezelStyleRounded;
             [doc addSubview:sw];
+
+            NSButton *rs = [NSButton buttonWithTitle:@"恢复" target:self action:@selector(restoreAsset:)];
+            rs.frame = NSMakeRect(368, cy + 4, 54, 28);
+            rs.tag = [self.swapSpecs indexOfObject:d];
+            rs.bezelStyle = NSBezelStyleRounded;
+            rs.toolTip = @"换回 PGM 自带的原始素材";
+            [doc addSubview:rs];
             cy += rowH;
             continue;
         }
@@ -1374,6 +1416,41 @@ static BOOL isAudio(NSString *p) {
     [pv setNeedsDisplay:YES];
 }
 
+- (void)restoreAsset:(NSButton *)b {
+    if (b.tag < 0 || b.tag >= (NSInteger)self.swapSpecs.count) return;
+    NSDictionary *d = self.swapSpecs[b.tag];
+    NSString *fname = d[@"file"];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *dir = [self.projectRoot stringByAppendingPathComponent:@"src/files/system"];
+    NSString *dst = [dir stringByAppendingPathComponent:fname];
+    NSString *bak = [dir stringByAppendingPathComponent:
+        [[fname stringByDeletingPathExtension] stringByAppendingString:@"_orig.png"]];
+    NSString *from = nil;
+    if ([fm fileExistsAtPath:bak]) {
+        from = bak;
+    } else {
+        NSString *tpl = [self templateRoot];
+        NSString *p = [tpl stringByAppendingPathComponent:
+                        [@"src/files/system" stringByAppendingPathComponent:fname]];
+        if ([fm fileExistsAtPath:p]) from = p;
+    }
+    if (!from) {
+        NSAlert *a = [NSAlert new];
+        a.messageText = @"找不到原始素材";
+        a.informativeText = [NSString stringWithFormat:@"没有 %@ 的备份，也没有模板副本。", fname];
+        [a runModal];
+        return;
+    }
+    [fm removeItemAtPath:dst error:NULL];
+    if (![fm copyItemAtPath:from toPath:dst error:NULL]) {
+        self.status.stringValue = @"恢复失败";
+        return;
+    }
+    [self loadPreviewImages];
+    [self rebuildGrid];
+    self.status.stringValue = [NSString stringWithFormat:@"已恢复 %@", fname];
+}
+
 - (void)swapAsset:(NSButton *)b {
     if (b.tag < 0 || b.tag >= (NSInteger)self.swapSpecs.count) return;
     NSDictionary *d = self.swapSpecs[b.tag];
@@ -1390,14 +1467,40 @@ static BOOL isAudio(NSString *p) {
 
     NSString *src = op.URL.path;
     NSSize sz = imageSizeAtPath(src);
-    if (sz.width != needW || sz.height != needH) {
-        NSAlert *a = [NSAlert new];
-        a.messageText = @"尺寸不对";
-        a.informativeText = [NSString stringWithFormat:
-            @"「%@」必须是 %.0f×%.0f，你选的是 %.0f×%.0f。\n\n可以用预览或 sips 先改尺寸。",
-            d[@"title"], needW, needH, sz.width, sz.height];
-        [a runModal];
-        return;
+    NSSize target = NSMakeSize(needW, needH);
+    NSRect crop = NSZeroRect;
+
+    if (!NSEqualSizes(sz, target)) {
+        NSInteger nH = (sz.width  > needW && fmod(sz.width,  needW) == 0) ? (NSInteger)lround(sz.width  / needW) : 0;
+        NSInteger nV = (sz.height > needH && fmod(sz.height, needH) == 0) ? (NSInteger)lround(sz.height / needH) : 0;
+        NSInteger n  = MAX(nH, nV);
+
+        if (n >= 2 && (nH >= 2 || nV >= 2)) {
+            NSAlert *a = [NSAlert new];
+            a.messageText = @"这张图是多帧拼图";
+            a.informativeText = [NSString stringWithFormat:
+                @"原图 %.0f×%.0f，正好是 %.0f×%.0f 的 %ld 帧（%@排列）。\n\n选一帧裁出来用：",
+                sz.width, sz.height, needW, needH, (long)n, (nH >= 2) ? @"水平" : @"垂直"];
+            [a addButtonWithTitle:@"裁这一帧"];
+            [a addButtonWithTitle:@"取消"];
+            NSPopUpButton *pop = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 200, 26)];
+            for (NSInteger i2 = 0; i2 < n; i2++)
+                [pop addItemWithTitle:[NSString stringWithFormat:@"第 %ld 帧", (long)(i2 + 1)]];
+            a.accessoryView = pop;
+            if ([a runModal] != NSAlertFirstButtonReturn) return;
+            NSInteger idx = pop.indexOfSelectedItem;
+            if (nH >= 2) crop = NSMakeRect(idx * needW, 0, needW, needH);
+            else         crop = NSMakeRect(0, idx * needH, needW, needH);
+        } else {
+            NSAlert *a = [NSAlert new];
+            a.messageText = @"尺寸不符";
+            a.informativeText = [NSString stringWithFormat:
+                @"「%@」需要 %.0f×%.0f，你选的是 %.0f×%.0f。\n\n要拉伸到正确尺寸吗？（可能变形）",
+                d[@"title"], needW, needH, sz.width, sz.height];
+            [a addButtonWithTitle:@"拉伸"];
+            [a addButtonWithTitle:@"取消"];
+            if ([a runModal] != NSAlertFirstButtonReturn) return;
+        }
     }
 
     NSString *dir = [self.projectRoot stringByAppendingPathComponent:@"src/files/system"];
@@ -1410,7 +1513,13 @@ static BOOL isAudio(NSString *p) {
         [fm copyItemAtPath:dst toPath:bak error:NULL];
     [fm removeItemAtPath:dst error:NULL];
     NSError *err = nil;
-    if (![fm copyItemAtPath:src toPath:dst error:&err]) {
+    if (crop.size.width > 0 || !NSEqualSizes(sz, target)) {
+        NSData *png = cropAndScale(src, crop, target);
+        if (!png || ![png writeToFile:dst atomically:YES]) {
+            self.status.stringValue = @"处理图片失败";
+            return;
+        }
+    } else if (![fm copyItemAtPath:src toPath:dst error:&err]) {
         self.status.stringValue = [NSString stringWithFormat:@"替换失败：%@", err.localizedDescription];
         return;
     }
