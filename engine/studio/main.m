@@ -324,7 +324,9 @@ static BOOL isAudio(NSString *p) {
     self.status.stringValue = [NSString stringWithFormat:@"共 %ld 个素材，点一下即复制指令", (long)n];
     self.runBtn.enabled = (root.length > 0);
     [self loadScriptList];
-    self.titleChk.state = [self titleSceneEnabled] ? NSControlStateValueOn : NSControlStateValueOff;
+    BOOL hasTitle = [self titleSceneEnabled];
+    self.titleChk.state = hasTitle ? NSControlStateValueOn : NSControlStateValueOff;
+    [self.previewView setValue:@(hasTitle) forKey:@"showTitle"];
     [self loadLayoutConfig];
     [self loadPreviewImages];
     [self loadGameFont];
@@ -598,7 +600,7 @@ static BOOL isAudio(NSString *p) {
             @"bg(\"title.png\")\n"
             @"bgm(\"natsu.wav\")\n\n"
             @"SET_TITLE_BUTTON(\"title_start.png\",\"title_quit.png\")\n"
-            @"SET_TITLE_COORD(200,110,0,78)\n"
+            @"SET_TITLE_COORD(TITLE_BUTTON_DX,TITLE_BUTTON_DY,TITLE_BUTTON_STEP_DX,TITLE_BUTTON_STEP_DY)\n"
             @"drawtitle(*newgame,*quit)\n\n"
             @"*newgame\n"
             @"bgmstop()\n"
@@ -1241,6 +1243,10 @@ static BOOL isAudio(NSString *p) {
         @[@"MENU_BUTTON_DX", @0, @480, @"菜单左边"],
         @[@"MENU_BUTTON_DY", @0, @272, @"菜单顶端"],
         @[@"MENU_BUTTON_STEP_DY", @10, @60, @"按钮行距"],
+        @"标题画面",
+        @[@"TITLE_BUTTON_DX", @0, @480, @"按钮左"],
+        @[@"TITLE_BUTTON_DY", @0, @272, @"按钮上"],
+        @[@"TITLE_BUTTON_STEP_DY", @10, @120, @"纵向间隔"],
         @"历史回想",
         @[@"HISTORY_TEXT_DX", @0, @480, @"正文左"],
         @[@"HISTORY_TEXT_DY", @0, @272, @"正文上"],
@@ -1698,6 +1704,8 @@ static BOOL isAudio(NSString *p) {
         NSRange r = NSMakeRange(0, text.length);
         if ([re firstMatchInString:text options:0 range:r])
             [re replaceMatchesInString:text options:0 range:r withTemplate:rep];
+        else
+            [text appendFormat:@"\n%@ = %d\n", key, self.layoutValues[key].intValue];
     }
     // 手型开关 → RAMUS_ICON
     {
@@ -1755,6 +1763,7 @@ static BOOL isAudio(NSString *p) {
 @property (assign) NSInteger optionCount;
 @property (assign) BOOL showHand;
 @property (assign) NSInteger textOffset;
+@property (assign) BOOL showTitle;
 @property (strong) NSFont *gameFont;
 @end
 
@@ -1870,6 +1879,21 @@ static BOOL isAudio(NSString *p) {
         }
         [[NSString stringWithFormat:@"选项 %ld", (long)(i + 1)]
             drawAtPoint:NSMakePoint(24, r.origin.y + 20) withAttributes:attr];
+    }
+
+    // 标题画面按钮（80x70）
+    if (self.showTitle && self.values[@"TITLE_BUTTON_DX"]) {
+        int tdx = [self.values[@"TITLE_BUTTON_DX"] intValue];
+        int tdy = [self.values[@"TITLE_BUTTON_DY"] intValue];
+        int tstep = [self.values[@"TITLE_BUTTON_STEP_DY"] intValue];
+        [[NSColor colorWithCalibratedRed:0.35 green:0.75 blue:0.55 alpha:0.45] setStroke];
+        for (int i = 0; i < 2; i++) {
+            NSRect r = NSMakeRect(tdx, tdy + i * tstep, 80, 70);
+            NSBezierPath *b = [NSBezierPath bezierPathWithRoundedRect:r xRadius:6 yRadius:6];
+            b.lineWidth = 1.5; [b stroke];
+            [[NSString stringWithFormat:@"%@", i == 0 ? @"start" : @"quit"]
+                drawAtPoint:NSMakePoint(r.origin.x + 18, r.origin.y + 28) withAttributes:attr];
+        }
     }
 
     // 手型图标
