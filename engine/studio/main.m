@@ -181,6 +181,17 @@ static BOOL isAudio(NSString *p) {
     return [e isEqualToString:@"mp3"] || [e isEqualToString:@"wav"] || [e isEqualToString:@"ogg"];
 }
 
+/* 新建工程时写的示例剧本：只播一句台词就结束，别跳回自己造成死循环 */
+static NSString *PGMSampleMainScript(void) {
+    return @"-- 你的剧本写在这里\n"
+        @"-- 一句台词两行：text(...) 然后 textcl()\n\n"
+        @"*start\n"
+        @"msgboxon()\n\n"
+        @"text(\"第一句台词。\")\n"
+        @"textcl()\n\n"
+        @"-- 剧本到此结束，从这里继续往下写\n";
+}
+
 - (NSImage *)thumbOf:(NSString *)path {
     NSURL *url = [NSURL fileURLWithPath:path];
     CGImageSourceRef src = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
@@ -215,10 +226,18 @@ static BOOL isAudio(NSString *p) {
 }
 
 - (void)loadProject:(NSString *)root {
+    if (self.projectRoot && ![root isEqualToString:self.projectRoot] &&
+        ![self confirmDiscardIfNeeded:@"打开另一个工程"]) return;
+
     self.projectRoot = root;
     self.pathLabel.stringValue = root;
     self.window.title = [NSString stringWithFormat:@"PGM Studio — %@", root.lastPathComponent];
     self.selItem = -1;
+    self.selCat = -1;
+    self.curScript = nil;
+    self.editor.string = @"";
+    self.dirty = NO;
+    self.saveBtn.enabled = NO;
     [NSUserDefaults.standardUserDefaults setObject:root forKey:@"lastProject"];
     {
         NSMutableArray *rec = [[NSUserDefaults.standardUserDefaults
@@ -228,6 +247,28 @@ static BOOL isAudio(NSString *p) {
         while (rec.count > 8) [rec removeLastObject];
         [NSUserDefaults.standardUserDefaults setObject:rec forKey:@"recentProjects"];
     }
+    [self reloadAssetList];
+    self.runBtn.enabled = (root.length > 0);
+    [self loadScriptList];
+    BOOL hasTitle = [self titleSceneEnabled];
+    self.titleChk.state = hasTitle ? NSControlStateValueOn : NSControlStateValueOff;
+
+    [self.previewView setValue:@(hasTitle) forKey:@"showTitle"];
+    [self loadLayoutConfig];
+    [self loadPreviewImages];
+    [self loadGameFont];
+    NSInteger off = [NSUserDefaults.standardUserDefaults integerForKey:@"previewTextOffset"];
+    [self.previewView setValue:@(off) forKey:@"textOffset"];
+    if (self.previewOffsetLabel)
+        self.previewOffsetLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)off];
+}
+
+/* 只重新扫描素材，不动当前分类、剧本和编辑器内容。
+   导入文件、删除文件后用它刷新，避免把用户正在编辑的剧本冲掉。 */
+- (void)reloadAssetList {
+    NSString *root = self.projectRoot;
+    NSString *keepCat = (self.selCat >= 0 && self.selCat < (NSInteger)self.categories.count)
+                        ? self.categories[self.selCat] : nil;
     [self.assets removeAllObjects];
     NSFileManager *fm = NSFileManager.defaultManager;
 
@@ -317,25 +358,16 @@ static BOOL isAudio(NSString *p) {
     for (NSString *k in self.assets.allKeys)
         if (![cats containsObject:k]) [cats addObject:k];
     self.categories = cats;
-    self.selCat = cats.count ? 0 : -1;
+    NSInteger keep = keepCat ? [cats indexOfObject:keepCat] : NSNotFound;
+    self.selCat = (keep != NSNotFound) ? keep : (cats.count ? 0 : -1);
     [self.catTable reloadData];
-    if (cats.count) [self.catTable selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+    if (self.selCat >= 0)
+        [self.catTable selectRowIndexes:[NSIndexSet indexSetWithIndex:self.selCat]
+                   byExtendingSelection:NO];
     [self rebuildGrid];
     NSInteger n = 0;
     for (NSString *k in cats) n += self.assets[k].count;
     self.status.stringValue = [NSString stringWithFormat:@"共 %ld 个素材，点一下即复制指令", (long)n];
-    self.runBtn.enabled = (root.length > 0);
-    [self loadScriptList];
-    BOOL hasTitle = [self titleSceneEnabled];
-    self.titleChk.state = hasTitle ? NSControlStateValueOn : NSControlStateValueOff;
-    [self.previewView setValue:@(hasTitle) forKey:@"showTitle"];
-    [self loadLayoutConfig];
-    [self loadPreviewImages];
-    [self loadGameFont];
-    NSInteger off = [NSUserDefaults.standardUserDefaults integerForKey:@"previewTextOffset"];
-    [self.previewView setValue:@(off) forKey:@"textOffset"];
-    if (self.previewOffsetLabel)
-        self.previewOffsetLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)off];
     for (NSString *k in cats)
         fprintf(stdout, "  %-10s %3lu\n", k.UTF8String, (unsigned long)self.assets[k].count);
     fprintf(stdout, "  合计 %ld\n", (long)n);
@@ -530,6 +562,24 @@ static BOOL isAudio(NSString *p) {
 
 /* ---------- 剧本文件 ---------- */
 
+/* 切文件/工程前确认未保存的改动。返回 NO 表示用户点了取消。 */
+- (BOOL)confirmDiscardIfNeeded:(NSString *)what {
+    if (!self.dirty && !self.layoutDirty) return YES;
+    NSAlert *a = [NSAlert new];
+    a.messageText = @"有未保存的改动";
+    a.informativeText = [NSString stringWithFormat:@"%@ 会丢掉这些改动。", what];
+    [a addButtonWithTitle:@"保存并继续"];
+    [a addButtonWithTitle:@"不保存"];
+    [a addButtonWithTitle:@"取消"];
+    a.alertStyle = NSAlertStyleWarning;
+    NSModalResponse r = [a runModal];
+    if (r == NSAlertFirstButtonReturn) {
+        [self saveScript:nil];
+        return !(self.dirty || self.layoutDirty);
+    }
+    return r == NSAlertSecondButtonReturn;
+}
+
 - (void)loadScriptList {
     NSMutableArray *out = [NSMutableArray array];
     NSFileManager *fm = NSFileManager.defaultManager;
@@ -550,10 +600,16 @@ static BOOL isAudio(NSString *p) {
     for (NSString *f in out) fprintf(stdout, "    %s\n", f.lastPathComponent.UTF8String);
     fflush(stdout);
     [self.fileTable reloadData];
-    if (out.count) {
-        [self.fileTable selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
-        [self openScript:out[0]];
+    if (!out.count) {
+        self.curScript = nil;
+        return;
     }
+    // 尽量留在当前文件；不要每次刷新都把用户切回第一个文件
+    NSInteger row = self.curScript ? [out indexOfObject:self.curScript] : NSNotFound;
+    if (row == NSNotFound) row = 0;
+    [self.fileTable selectRowIndexes:[NSIndexSet indexSetWithIndex:row]
+                byExtendingSelection:NO];
+    [self openScript:out[row]];
 }
 
 - (NSString *)readText:(NSString *)path {
@@ -569,6 +625,17 @@ static BOOL isAudio(NSString *p) {
 }
 
 - (void)openScript:(NSString *)path {
+    if ([path isEqualToString:self.curScript]) return;   // 同一个文件，别重读冲掉编辑
+    if (![self confirmDiscardIfNeeded:
+          [NSString stringWithFormat:@"切换到 %@", path.lastPathComponent]]) {
+        NSInteger row = self.curScript ? [self.scriptFiles indexOfObject:self.curScript]
+                                       : NSNotFound;
+        if (row != NSNotFound)
+            [self.fileTable selectRowIndexes:[NSIndexSet indexSetWithIndex:row]
+                        byExtendingSelection:NO];
+        [self.fileTable reloadData];
+        return;
+    }
     self.curScript = path;
     self.editor.string = [self readText:path];
     self.dirty = NO;
@@ -600,7 +667,7 @@ static BOOL isAudio(NSString *p) {
             @"allclear()\n"
             @"textclear()\n\n"
             @"bg(\"title.png\")\n"
-            @"bgm(\"natsu.wav\")\n\n"
+            @"bgm(\"theme.wav\")\n\n"
             @"SET_TITLE_BUTTON(\"title_start.png\",\"title_quit.png\")\n"
             @"SET_TITLE_COORD(TITLE_BUTTON_DX,TITLE_BUTTON_DY,TITLE_BUTTON_STEP_DX,TITLE_BUTTON_STEP_DY)\n"
             @"drawtitle(*newgame,*quit)\n\n"
@@ -608,8 +675,7 @@ static BOOL isAudio(NSString *p) {
             @"bgmstop()\n"
             @"jump(\"main.ev\")\n\n"
             @"*quit\n"
-            @"bgmstop()\n"
-            @"jump(\"title.ev\")\n";
+            @"QUIT()\n";
         NSError *err = nil;
         if (![title writeToFile:[self titleScriptPath] atomically:YES
                        encoding:NSUTF8StringEncoding error:&err]) {
@@ -618,7 +684,7 @@ static BOOL isAudio(NSString *p) {
         }
         [t replaceOccurrencesOfString:@"jump(\"main.ev\")" withString:@"jump(\"title.ev\")"
                               options:0 range:NSMakeRange(0, t.length)];
-        self.status.stringValue = @"已启用标题画面（记得放一张 title.png 当背景）";
+        self.status.stringValue = @"已启用标题画面（背景 title.png，音乐 theme.wav）";
     } else {
         [t replaceOccurrencesOfString:@"jump(\"title.ev\")" withString:@"jump(\"main.ev\")"
                               options:0 range:NSMakeRange(0, t.length)];
@@ -629,21 +695,31 @@ static BOOL isAudio(NSString *p) {
 }
 
 - (void)saveScript:(id)sender {
+    NSMutableArray *done = [NSMutableArray array];
+    BOOL failed = NO;
+
+    if (self.dirty && self.curScript) {
+        NSError *err = nil;
+        NSString *text = self.editor.string;
+        if (![text writeToFile:self.curScript atomically:YES
+                    encoding:NSUTF8StringEncoding error:&err]) {
+            self.status.stringValue = [NSString stringWithFormat:@"保存失败：%@", err.localizedDescription];
+            failed = YES;
+        } else {
+            self.dirty = NO;
+            [done addObject:self.curScript.lastPathComponent];
+        }
+    }
     if (self.layoutDirty) {
-        [self saveLayoutConfig];
-        self.saveBtn.enabled = NO;
-        return;
+        if ([self saveLayoutConfig]) [done addObject:@"布局"];
+        else failed = YES;
     }
-    if (!self.curScript) return;
-    NSError *err = nil;
-    NSString *text = self.editor.string;
-    if (![text writeToFile:self.curScript atomically:YES encoding:NSUTF8StringEncoding error:&err]) {
-        self.status.stringValue = [NSString stringWithFormat:@"保存失败：%@", err.localizedDescription];
-        return;
-    }
-    self.dirty = NO;
-    self.saveBtn.enabled = NO;
-    self.status.stringValue = [NSString stringWithFormat:@"已保存 %@", self.curScript.lastPathComponent];
+
+    self.saveBtn.enabled = (self.dirty || self.layoutDirty);
+    if (!failed)
+        self.status.stringValue = done.count
+            ? [NSString stringWithFormat:@"已保存 %@", [done componentsJoinedByString:@"、"]]
+            : @"没有需要保存的改动";
 }
 
 - (void)runGame:(id)sender {
@@ -743,19 +819,13 @@ static BOOL isAudio(NSString *p) {
         for (NSString *f in [fm contentsOfDirectoryAtPath:d error:NULL]) {
             if ([f hasPrefix:@"."] || [f isEqualToString:@"README.txt"]) continue;
             if ([f.pathExtension.lowercaseString isEqualToString:@"lua"]) continue;  // CGlist.lua 保留
+            if ([f isEqualToString:@"title.png"]) continue;  // 标题画面默认背景要留着
             [fm removeItemAtPath:[d stringByAppendingPathComponent:f] error:NULL];
         }
     }
     NSString *user = [dest stringByAppendingPathComponent:@"src/user"];
     [fm createDirectoryAtPath:user withIntermediateDirectories:YES attributes:nil error:NULL];
-    NSString *emptyScript =
-        @"-- 你的剧本写在这里\n"
-        @"-- 一句台词两行：text(...) 然后 textcl()\n\n"
-        @"*start\n"
-        @"msgboxon()\n\n"
-        @"text(\"第一句台词。\")\n"
-        @"textcl()\n\n"
-        @"jump(\"main.ev\")\n";
+    NSString *emptyScript = PGMSampleMainScript();
     [emptyScript writeToFile:[user stringByAppendingPathComponent:@"main.ev"]
                   atomically:YES encoding:NSUTF8StringEncoding error:NULL];
 
@@ -880,13 +950,20 @@ static BOOL isAudio(NSString *p) {
     }
     if (!script) { self.status.stringValue = @"找不到 export-iso.sh"; return; }
 
-    // 文件名只用 ASCII，PSP 系统限制
+    // 文件名只用 ASCII，PSP 系统限制；全中文名字会变成一串下划线，这时退回 PGMGame
     NSMutableString *ascii = [NSMutableString string];
+    BOOL meaningful = NO;
     for (NSUInteger i = 0; i < self.projectRoot.lastPathComponent.length; i++) {
         unichar c = [self.projectRoot.lastPathComponent characterAtIndex:i];
-        [ascii appendFormat:@"%c", (c < 128 ? c : '_')];
+        if (c < 128) {
+            [ascii appendFormat:@"%c", c];
+            if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+                meaningful = YES;
+        } else {
+            [ascii appendString:@"_"];
+        }
     }
-    NSString *name = ascii.length ? ascii : @"PGMGame";
+    NSString *name = meaningful ? ascii : @"PGMGame";
     NSString *out = [NSHomeDirectory() stringByAppendingPathComponent:
                         [NSString stringWithFormat:@"Desktop/%@.iso", name]];
 
@@ -1128,7 +1205,7 @@ static BOOL isAudio(NSString *p) {
         [e runModal];
         return;
     }
-    [self loadProject:self.projectRoot];
+    [self reloadAssetList];
     self.status.stringValue = [NSString stringWithFormat:@"已删除 %@", ai.name];
 }
 
@@ -1154,15 +1231,37 @@ static BOOL isAudio(NSString *p) {
     NSFileManager *fm = NSFileManager.defaultManager;
     [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:NULL];
 
-    NSInteger ok = 0;
+    NSInteger ok = 0, skipped = 0;
+    BOOL audioCat = [audioMap containsObject:cat];
     for (NSURL *u in urls) {
         NSString *name = u.lastPathComponent;
+        if (!name.length || [name hasPrefix:@"."]) { skipped++; continue; }
+        // 图片分类只收图片，音频分类只收音频
+        if (audioCat ? !isAudio(name) : !isImage(name)) { skipped++; continue; }
+
         NSString *dst = [dir stringByAppendingPathComponent:name];
-        [fm removeItemAtPath:dst error:NULL];
-        if ([fm copyItemAtPath:u.path toPath:dst error:NULL]) ok++;
+        if ([u.path isEqualToString:dst]) { ok++; continue; }  // 拖的是同一个文件，别删它
+
+        // 先拷到临时名，成功后再替换，拷贝失败也不会毁掉原文件
+        NSString *tmp = [dir stringByAppendingPathComponent:
+            [NSString stringWithFormat:@".import-%@.tmp", NSUUID.UUID.UUIDString]];
+        if (![fm copyItemAtPath:u.path toPath:tmp error:NULL]) { skipped++; continue; }
+        BOOL wrote;
+        if ([fm fileExistsAtPath:dst]) {
+            wrote = [fm replaceItemAtURL:[NSURL fileURLWithPath:dst]
+                          withItemAtURL:[NSURL fileURLWithPath:tmp]
+                         backupItemName:nil options:0
+                        resultingItemURL:NULL error:NULL];
+        } else {
+            wrote = [fm moveItemAtPath:tmp toPath:dst error:NULL];
+        }
+        if (wrote) ok++;
+        else { [fm removeItemAtPath:tmp error:NULL]; skipped++; }
     }
-    [self loadProject:self.projectRoot];
-    self.status.stringValue = [NSString stringWithFormat:@"导入 %ld 个文件到 %@", (long)ok, sub];
+    [self reloadAssetList];
+    self.status.stringValue = skipped
+        ? [NSString stringWithFormat:@"导入 %ld 个文件到 %@，跳过 %ld 个", (long)ok, sub, (long)skipped]
+        : [NSString stringWithFormat:@"导入 %ld 个文件到 %@", (long)ok, sub];
 }
 
 - (void)tileClicked:(NSButton *)b {
@@ -1267,6 +1366,44 @@ static BOOL isAudio(NSString *p) {
     sec.action = @selector(sectionChanged:);
     sec.autoresizingMask = NSViewMinYMargin;
     [self.layoutView addSubview:sec];
+
+    // 预览选项数（1~4）——决定预览里画几个选项框
+    NSTextField *ocLbl = [NSTextField labelWithString:@"预览选项数"];
+    ocLbl.frame = NSMakeRect(394, body.size.height - 30, 74, 18);
+    ocLbl.font = [NSFont systemFontOfSize:11];
+    ocLbl.textColor = NSColor.secondaryLabelColor;
+    ocLbl.autoresizingMask = NSViewMinYMargin;
+    [self.layoutView addSubview:ocLbl];
+
+    NSSegmentedControl *oc = [[NSSegmentedControl alloc] initWithFrame:
+        NSMakeRect(470, body.size.height - 34, 124, 26)];
+    oc.segmentCount = 4;
+    for (int i = 0; i < 4; i++)
+        [oc setLabel:[NSString stringWithFormat:@"%d", i + 1] forSegment:i];
+    oc.selectedSegment = 1;
+    oc.target = self;
+    oc.action = @selector(optionCountChanged:);
+    oc.autoresizingMask = NSViewMinYMargin;
+    [self.layoutView addSubview:oc];
+
+    NSButton *handChk = [NSButton checkboxWithTitle:@"显示手型"
+                                             target:self action:@selector(handToggle:)];
+    handChk.frame = NSMakeRect(608, body.size.height - 33, 104, 22);
+    handChk.state = NSControlStateValueOn;
+    handChk.autoresizingMask = NSViewMinYMargin;
+    [self.layoutView addSubview:handChk];
+
+    self.fitWarning = [[PGMPassLabel alloc] initWithFrame:
+        NSMakeRect(716, body.size.height - 30, MAX(body.size.width - 716 - 230, 80), 18)];
+    self.fitWarning.stringValue = @"";
+    self.fitWarning.bezeled = NO;
+    self.fitWarning.drawsBackground = NO;
+    self.fitWarning.editable = NO;
+    self.fitWarning.selectable = NO;
+    self.fitWarning.font = [NSFont systemFontOfSize:11];
+    self.fitWarning.textColor = NSColor.systemRedColor;
+    self.fitWarning.autoresizingMask = NSViewWidthSizable|NSViewMinYMargin;
+    [self.layoutView addSubview:self.fitWarning];
 
     NSTextField *offLbl = [NSTextField labelWithString:@"预览偏移"];
     offLbl.frame = NSMakeRect(body.size.width - 216, body.size.height - 30, 62, 18);
@@ -1429,6 +1566,7 @@ static BOOL isAudio(NSString *p) {
                 [self.layoutValues[@"MSGTEXT_DY"] intValue],
                 [self.layoutValues[@"RAMUS_BUTTON_BG_DY"] intValue],
                 [self.layoutValues[@"RAMUS_BUTTON_STEP_DY"] intValue]);
+    [self updateFitWarning];
     [(NSView *)self.previewView setNeedsDisplay:YES];
 }
 
@@ -1715,11 +1853,11 @@ static BOOL isAudio(NSString *p) {
     self.layoutDirty = NO;
 }
 
-- (void)saveLayoutConfig {
-    if (!self.projectRoot) return;
+- (BOOL)saveLayoutConfig {
+    if (!self.projectRoot) return NO;
     NSString *cfg = [self.projectRoot stringByAppendingPathComponent:@"src/user/config.lua"];
     NSMutableString *text = [[self readText:cfg] mutableCopy];
-    if (!text.length) { self.status.stringValue = @"没有 config.lua 可写"; return; }
+    if (!text.length) { self.status.stringValue = @"没有 config.lua 可写"; return NO; }
     for (NSString *key in self.layoutValues.allKeys) {
         NSRegularExpression *re = [NSRegularExpression
             regularExpressionWithPattern:[NSString stringWithFormat:@"(?m)^(\\s*%@\\s*=\\s*)([0-9]+)", key]
@@ -1748,10 +1886,11 @@ static BOOL isAudio(NSString *p) {
     NSError *err = nil;
     if (![text writeToFile:cfg atomically:YES encoding:NSUTF8StringEncoding error:&err]) {
         self.status.stringValue = [NSString stringWithFormat:@"写入失败：%@", err.localizedDescription];
-        return;
+        return NO;
     }
     self.layoutDirty = NO;
     self.status.stringValue = @"布局已写入 config.lua，重新运行即可生效";
+    return YES;
 }
 
 @end
@@ -1966,6 +2105,34 @@ static BOOL isAudio(NSString *p) {
 }
 @end
 
+static NSMenu *PGMCreateMainMenu(void) {
+    NSMenu *mb = [NSMenu new];
+
+    NSMenuItem *appItem = [NSMenuItem new];
+    [mb addItem:appItem];
+    NSMenu *appMenu = [NSMenu new];
+    [appMenu addItemWithTitle:@"隐藏 PGM Studio" action:@selector(hide:) keyEquivalent:@"h"];
+    [appMenu addItem:[NSMenuItem separatorItem]];
+    [appMenu addItemWithTitle:@"退出 PGM Studio" action:@selector(terminate:) keyEquivalent:@"q"];
+    appItem.submenu = appMenu;
+
+    // 标准编辑菜单，让编辑器里的 ⌘C/⌘V/⌘Z 正常工作
+    NSMenuItem *editItem = [NSMenuItem new];
+    [mb addItem:editItem];
+    NSMenu *edit = [[NSMenu alloc] initWithTitle:@"编辑"];
+    [edit addItemWithTitle:@"撤销" action:@selector(undo:) keyEquivalent:@"z"];
+    NSMenuItem *redo = [edit addItemWithTitle:@"重做" action:@selector(redo:) keyEquivalent:@"Z"];
+    redo.keyEquivalentModifierMask = NSEventModifierFlagCommand|NSEventModifierFlagShift;
+    [edit addItem:[NSMenuItem separatorItem]];
+    [edit addItemWithTitle:@"剪切" action:@selector(cut:) keyEquivalent:@"x"];
+    [edit addItemWithTitle:@"复制" action:@selector(copy:) keyEquivalent:@"c"];
+    [edit addItemWithTitle:@"粘贴" action:@selector(paste:) keyEquivalent:@"v"];
+    [edit addItemWithTitle:@"全选" action:@selector(selectAll:) keyEquivalent:@"a"];
+    editItem.submenu = edit;
+
+    return mb;
+}
+
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         [NSApplication sharedApplication];
@@ -1974,16 +2141,7 @@ int main(int argc, const char *argv[]) {
         static PGMAppDelegate *delegate = nil;
         delegate = [PGMAppDelegate new];
         NSApp.delegate = delegate;
-
-        NSMenu *mb = [NSMenu new];
-        NSMenuItem *appItem = [NSMenuItem new];
-        [mb addItem:appItem];
-        NSMenu *appMenu = [NSMenu new];
-        [appMenu addItemWithTitle:@"隐藏 PGM Studio" action:@selector(hide:) keyEquivalent:@"h"];
-        [appMenu addItem:[NSMenuItem separatorItem]];
-        [appMenu addItemWithTitle:@"退出 PGM Studio" action:@selector(terminate:) keyEquivalent:@"q"];
-        appItem.submenu = appMenu;
-        NSApp.mainMenu = mb;
+        NSApp.mainMenu = PGMCreateMainMenu();
 
         StudioController *c = [StudioController new];
         [c buildUI];

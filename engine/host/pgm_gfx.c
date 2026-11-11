@@ -202,7 +202,10 @@ static int api_ImageGetH(lua_State *L)
 
 static int api_ImageClone(lua_State *L)
 {
-	push_image(L, image_clone(to_image(L, 1)));
+	image_p src = to_image(L, 1);
+	/* 图片加载失败时 ImageLoad 返回 nil，框架里会直接 ImageClone(nil)；
+	   不挡就会在 image_clone 里空指针崩溃 */
+	push_image(L, src ? image_clone(src) : NULL);
 	return 1;
 }
 
