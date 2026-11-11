@@ -1214,6 +1214,12 @@ static BOOL isAudio(NSString *p) {
     self.layoutView.hidden = YES;
     [cv addSubview:self.layoutView];
 
+    self.swapSpecs = @[
+        @{ @"title": @"对话框",     @"file": @"msgbox01.png",    @"w": @480, @"h": @80  },
+        @{ @"title": @"选项背景",   @"file": @"ramus_bg.png",    @"w": @480, @"h": @116 },
+        @{ @"title": @"手型图标",   @"file": @"hand_icon02.png", @"w": @32,  @"h": @32  },
+    ];
+
     self.layoutValues = [NSMutableDictionary dictionary];
     self.layoutReadouts = [NSMutableDictionary dictionary];
     self.layoutSliders = [NSMutableDictionary dictionary];
@@ -1377,7 +1383,9 @@ static BOOL isAudio(NSString *p) {
         sl.continuous = YES;
         [doc addSubview:sl];
 
-        NSTextField *val = [NSTextField labelWithString:@"—"];
+        NSTextField *val = [[NSTextField alloc] initWithFrame:NSMakeRect(0, y + 10, 64, 18)];
+        val.stringValue = @"—";
+        val.bezeled = NO; val.drawsBackground = NO; val.editable = NO; val.selectable = NO;
         val.font = [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightMedium];
         val.textColor = NSColor.labelColor;
         val.alignment = NSTextAlignmentRight;
@@ -1387,7 +1395,15 @@ static BOOL isAudio(NSString *p) {
         [self.layoutRows addObject:@[ sl, val, lbl ]];
         self.layoutReadouts[k[0]] = val;
         self.layoutSliders[k[0]] = sl;
-        if (!self.layoutValues[k[0]]) self.layoutValues[k[0]] = @(sl.minValue);
+        if (!self.layoutValues[k[0]]) {
+            NSDictionary *fwDefaults = @{
+                @"MENU_BUTTON_DX": @210, @"MENU_BUTTON_DY": @80, @"MENU_BUTTON_STEP_DY": @26,
+                @"HISTORY_TEXT_DX": @62, @"HISTORY_TEXT_DY": @46,
+                @"TITLE_BUTTON_DX": @200, @"TITLE_BUTTON_DY": @110, @"TITLE_BUTTON_STEP_DY": @78,
+            };
+            NSNumber *dv = fwDefaults[k[0]];
+            self.layoutValues[k[0]] = dv ? dv : @(sl.minValue);
+        }
         y += 44;
     }
     doc.frame = NSMakeRect(0, 0, pw, y + 10);
@@ -1640,49 +1656,51 @@ static BOOL isAudio(NSString *p) {
         self.status.stringValue = @"没找到 src/user/config.lua";
         return;
     }
-    for (NSString *key in self.layoutValues.allKeys) {
+
+    // 遍历所有分组的键，不只当前显示的
+    NSMutableArray *allKeys = [NSMutableArray array];
+    for (NSDictionary *sec in self.layoutSections)
+        for (NSArray *k in sec[@"rows"])
+            [allKeys addObject:k[0]];
+
+    for (NSString *key in allKeys) {
         NSRegularExpression *re = [NSRegularExpression
             regularExpressionWithPattern:[NSString stringWithFormat:@"(?m)^\\s*%@\\s*=\\s*([0-9]+)", key]
                                  options:0 error:NULL];
-        NSTextCheckingResult *m = [re firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
-        if (!m) continue;
-        NSInteger v = [[text substringWithRange:[m rangeAtIndex:1]] integerValue];
-        self.layoutValues[key] = @(v);
-        NSTextField *val = self.layoutReadouts[key];
-        val.stringValue = [NSString stringWithFormat:@"%ld", (long)v];
-    }
-    [self.previewView setValue:self.layoutValues forKey:@"values"];
-    [(NSView *)self.previewView setNeedsDisplay:YES];
-    // 滑块位置
-    for (NSString *key in self.layoutSliders) {
-        NSSlider *sl = self.layoutSliders[key];
-        NSNumber *v = self.layoutValues[key];
-        if (v) sl.doubleValue = v.doubleValue;
-    }
-    // 读 RAMUS_ICON 决定勾选状态
-    {
-        NSRegularExpression *re = [NSRegularExpression
-            regularExpressionWithPattern:@"(?m)^\\s*RAMUS_ICON\\s*=\\s*\"([^\"]*)\""
-                                 options:0 error:NULL];
         NSTextCheckingResult *m = [re firstMatchInString:text options:0
                                                    range:NSMakeRange(0, text.length)];
-        if (m) {
-            NSString *v = [text substringWithRange:[m rangeAtIndex:1]];
-            self.showHandInGame = ![v isEqualToString:@"none.png"];
-        } else {
-            self.showHandInGame = YES;
-        }
+        if (m)
+            self.layoutValues[key] = @([[text substringWithRange:[m rangeAtIndex:1]] integerValue]);
+    }
+
+    // RAMUS_ICON（手型开关）
+    {
+        __block NSString *iconVal = nil;
+        [text enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
+            NSString *t = [line stringByTrimmingCharactersInSet:
+                           NSCharacterSet.whitespaceCharacterSet];
+            if (![t hasPrefix:@"RAMUS_ICON"]) return;
+            if ([t hasPrefix:@"RAMUS_ICON_"]) return;
+            NSRange eq = [t rangeOfString:@"="];
+            if (eq.location == NSNotFound) return;
+            NSString *v = [[t substringFromIndex:eq.location + 1]
+                           stringByTrimmingCharactersInSet:
+                           NSCharacterSet.whitespaceCharacterSet];
+            v = [v stringByReplacingOccurrencesOfString:@"\"" withString:@""];
+            iconVal = v;
+            *stop = YES;
+        }];
+        self.showHandInGame = !(iconVal && [iconVal isEqualToString:@"none.png"]);
         [self.previewView setValue:@(self.showHandInGame) forKey:@"showHand"];
         for (NSView *sub in self.layoutView.subviews) {
             if ([sub isKindOfClass:[NSButton class]] &&
-                [[(NSButton *)sub title] isEqualToString:@"显示手型"]) {
+                [[(NSButton *)sub title] isEqualToString:@"显示手型"])
                 [(NSButton *)sub setState:self.showHandInGame ? NSControlStateValueOn
                                                               : NSControlStateValueOff];
-            }
         }
-        [(NSView *)self.previewView setNeedsDisplay:YES];
     }
 
+    [self rebuildLayoutRows];
     self.layoutDirty = NO;
 }
 
