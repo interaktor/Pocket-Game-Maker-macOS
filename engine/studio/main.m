@@ -148,6 +148,8 @@ static NSSize imageSizeAtPath(NSString *path) {
 @property (assign) BOOL showHandInGame;
 @property (strong) NSTextField *previewOffsetLabel;
 @property (strong) NSButton *titleChk;
+@property (strong) NSArray *layoutSections;
+@property (assign) NSInteger curSection;
 @property (strong) NSArray<NSDictionary *> *swapSpecs;
 @property (strong) NSScrollView *layoutPanel;
 @property (strong) PGMDivider *layoutDivider;
@@ -1217,191 +1219,88 @@ static BOOL isAudio(NSString *p) {
     self.layoutSliders = [NSMutableDictionary dictionary];
     self.layoutRows = [NSMutableArray array];
 
-    self.swapSpecs = @[
-        @{ @"title": @"对话框",     @"file": @"msgbox01.png",    @"w": @480, @"h": @80  },
-        @{ @"title": @"选项背景",   @"file": @"ramus_bg.png",    @"w": @480, @"h": @116 },
-        @{ @"title": @"手型图标",   @"file": @"hand_icon02.png", @"w": @32,  @"h": @32  },
+    self.layoutSections = @[
+        @{ @"title": @"素材替换", @"rows": @[] },
+        @{ @"title": @"对话框", @"rows": @[
+            @[@"MSGBOX_DY", @0, @272, @"框位置"],
+            @[@"DIALOG_NAME_DX", @0, @480, @"人名左"],
+            @[@"DIALOG_NAME_DY", @0, @272, @"人名上"],
+            @[@"MSGTEXT_DX", @0, @480, @"正文左"],
+            @[@"MSGTEXT_DY", @0, @272, @"正文上"],
+            @[@"MSGTEXT_LINELEN", @8, @40, @"每行字数"],
+        ]},
+        @{ @"title": @"选项", @"rows": @[
+            @[@"RAMUS_BUTTON_BG_DY", @0, @272, @"起始位置"],
+            @[@"RAMUS_BUTTON_STEP_DY", @20, @100, @"行距"],
+            @[@"RAMUS_BUTTON_DX", @0, @240, @"文字左"],
+            @[@"RAMUS_ICON_DY", @0, @272, @"手型位置"],
+        ]},
+        @{ @"title": @"标题", @"rows": @[
+            @[@"TITLE_BUTTON_DX", @0, @480, @"按钮左"],
+            @[@"TITLE_BUTTON_DY", @0, @272, @"按钮上"],
+            @[@"TITLE_BUTTON_STEP_DY", @10, @120, @"纵向间隔"],
+        ]},
+        @{ @"title": @"菜单/回想", @"rows": @[
+            @[@"MENU_BUTTON_DX", @0, @480, @"菜单左"],
+            @[@"MENU_BUTTON_DY", @0, @272, @"菜单上"],
+            @[@"MENU_BUTTON_STEP_DY", @10, @60, @"按钮行距"],
+            @[@"HISTORY_TEXT_DX", @0, @480, @"回想左"],
+            @[@"HISTORY_TEXT_DY", @0, @272, @"回想上"],
+        ]},
     ];
+    self.curSection = 1;
 
-    NSMutableArray *spec = [NSMutableArray array];
-    [spec addObject:@"素材替换"];
-    for (NSDictionary *d in self.swapSpecs) [spec addObject:d];
-    [spec addObject:@"对话框"];
-    [spec addObjectsFromArray:@[
-        @[@"MSGBOX_DY", @0, @272, @"框顶端"],
-        @[@"DIALOG_NAME_DX", @0, @480, @"人名左"],
-        @[@"DIALOG_NAME_DY", @0, @272, @"人名上"],
-        @[@"MSGTEXT_DX", @0, @480, @"正文左"],
-        @[@"MSGTEXT_DY", @0, @272, @"正文上"],
-        @[@"MSGTEXT_LINELEN", @8, @40, @"每行字数"],
-        @"选项菜单",
-        @[@"RAMUS_BUTTON_BG_DY", @0, @272, @"起始位置"],
-        @[@"RAMUS_BUTTON_STEP_DY", @20, @100, @"行距"],
-        @[@"RAMUS_BUTTON_DX", @0, @240, @"文字左"],
-        @[@"RAMUS_ICON_DY", @0, @272, @"手型图标"],
-        @"游戏内菜单",
-        @[@"MENU_BUTTON_DX", @0, @480, @"菜单左边"],
-        @[@"MENU_BUTTON_DY", @0, @272, @"菜单顶端"],
-        @[@"MENU_BUTTON_STEP_DY", @10, @60, @"按钮行距"],
-        @"标题画面",
-        @[@"TITLE_BUTTON_DX", @0, @480, @"按钮左"],
-        @[@"TITLE_BUTTON_DY", @0, @272, @"按钮上"],
-        @[@"TITLE_BUTTON_STEP_DY", @10, @120, @"纵向间隔"],
-        @"历史回想",
-        @[@"HISTORY_TEXT_DX", @0, @480, @"正文左"],
-        @[@"HISTORY_TEXT_DY", @0, @272, @"正文上"],
-    ]];
-
-    CGFloat rowH = 40, headerH = 26, y = 8;
-    CGFloat panelW = 430;
-    for (id entry in spec) y += [entry isKindOfClass:[NSString class]] ? headerH : rowH;
-
-    PGMFlippedView *doc = [[PGMFlippedView alloc] initWithFrame:NSMakeRect(0, 0, panelW, y + 8)];
-    CGFloat cy = 8;
-    for (id entry in spec) {
-        if ([entry isKindOfClass:[NSString class]]) {
-            NSTextField *h = [NSTextField labelWithString:entry];
-            h.frame = NSMakeRect(14, cy + 6, panelW - 28, 18);
-            h.font = [NSFont boldSystemFontOfSize:11];
-            h.textColor = NSColor.secondaryLabelColor;
-            [doc addSubview:h];
-            cy += headerH;
-            continue;
-        }
-        if ([entry isKindOfClass:[NSDictionary class]]) {
-            NSDictionary *d = entry;
-            NSTextField *t = [NSTextField labelWithString:d[@"title"]];
-            t.frame = NSMakeRect(22, cy + 10, 78, 18);
-            t.font = [NSFont systemFontOfSize:11];
-            [doc addSubview:t];
-
-            NSTextField *info = [NSTextField labelWithString:
-                [NSString stringWithFormat:@"%@  (%@×%@)",
-                    d[@"file"], d[@"w"], d[@"h"]]];
-            info.frame = NSMakeRect(100, cy + 10, 168, 18);
-            info.font = [NSFont monospacedSystemFontOfSize:10 weight:NSFontWeightRegular];
-            info.textColor = NSColor.secondaryLabelColor;
-            info.lineBreakMode = NSLineBreakByTruncatingMiddle;
-            [doc addSubview:info];
-
-            NSButton *sw = [NSButton buttonWithTitle:@"换图片…" target:self action:@selector(swapAsset:)];
-            sw.frame = NSMakeRect(272, cy + 4, 92, 28);
-            sw.tag = [self.swapSpecs indexOfObject:d];
-            sw.bezelStyle = NSBezelStyleRounded;
-            [doc addSubview:sw];
-
-            NSButton *rs = [NSButton buttonWithTitle:@"恢复" target:self action:@selector(restoreAsset:)];
-            rs.frame = NSMakeRect(368, cy + 4, 54, 28);
-            rs.tag = [self.swapSpecs indexOfObject:d];
-            rs.bezelStyle = NSBezelStyleRounded;
-            rs.toolTip = @"换回 PGM 自带的原始素材";
-            [doc addSubview:rs];
-            cy += rowH;
-            continue;
-        }
-
-        NSArray *k = entry;
-        NSTextField *lbl = [NSTextField labelWithString:k[3]];
-        lbl.frame = NSMakeRect(22, cy + 10, 78, 18);
-        lbl.font = [NSFont systemFontOfSize:11];
-        [doc addSubview:lbl];
-
-        NSSlider *sl = [[NSSlider alloc] initWithFrame:NSMakeRect(98, cy + 6, 172, 24)];
-        sl.minValue = [k[1] doubleValue];
-        sl.maxValue = [k[2] doubleValue];
-        sl.identifier = k[0];
-        sl.target = self;
-        sl.action = @selector(layoutSliderChanged:);
-        sl.continuous = YES;
-        [doc addSubview:sl];
-
-        NSTextField *val = [NSTextField labelWithString:@"—"];
-        val.frame = NSMakeRect(276, cy + 10, 148, 18);
-        val.font = [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightMedium];
-        val.textColor = NSColor.secondaryLabelColor;
-        val.alignment = NSTextAlignmentRight;
-        val.toolTip = k[0];           // 完整参数名放提示里
-        [doc addSubview:val];
-
-        [self.layoutRows addObject:@[ sl, val, lbl ]];
-        self.layoutReadouts[k[0]] = val;
-        self.layoutSliders[k[0]] = sl;
-        self.layoutValues[k[0]] = @(sl.doubleValue);
-        cy += rowH;
-    }
-
-    // 顶部：预览选项个数
-    NSTextField *ocLbl = [NSTextField labelWithString:@"预览选项数"];
-    ocLbl.frame = NSMakeRect(14, body.size.height - 28, 88, 18);
-    ocLbl.font = [NSFont systemFontOfSize:11];
-    ocLbl.textColor = NSColor.secondaryLabelColor;
-    [self.layoutView addSubview:ocLbl];
-
-    NSButton *handChk = [NSButton checkboxWithTitle:@"显示手型" target:self action:@selector(handToggle:)];
-    handChk.frame = NSMakeRect(200, body.size.height - 30, 110, 22);
-    handChk.state = NSControlStateValueOn;
-    [self.layoutView addSubview:handChk];
-
-    NSSegmentedControl *oc = [[NSSegmentedControl alloc] initWithFrame:NSMakeRect(104, body.size.height - 32, 200, 26)];
-    oc.segmentCount = 4;
-    for (int i = 0; i < 4; i++) [oc setLabel:[NSString stringWithFormat:@"%d", i + 1] forSegment:i];
-    oc.selectedSegment = 1;
-    oc.frame = NSMakeRect(104, body.size.height - 32, 90, 26);
-    oc.target = self;
-    oc.action = @selector(optionCountChanged:);
-    [self.layoutView addSubview:oc];
+    // 顶栏：分组切换 + 预览偏移
+    NSSegmentedControl *sec = [[NSSegmentedControl alloc] initWithFrame:
+        NSMakeRect(12, body.size.height - 34, 370, 28)];
+    sec.segmentCount = self.layoutSections.count;
+    for (NSUInteger i = 0; i < self.layoutSections.count; i++)
+        [sec setLabel:self.layoutSections[i][@"title"] forSegment:i];
+    sec.selectedSegment = 1;
+    sec.target = self;
+    sec.action = @selector(sectionChanged:);
+    sec.autoresizingMask = NSViewMinYMargin;
+    [self.layoutView addSubview:sec];
 
     NSTextField *offLbl = [NSTextField labelWithString:@"预览偏移"];
-    offLbl.frame = NSMakeRect(body.size.width - 216, body.size.height - 27, 62, 18);
+    offLbl.frame = NSMakeRect(body.size.width - 216, body.size.height - 30, 62, 18);
     offLbl.font = [NSFont systemFontOfSize:11];
     offLbl.textColor = NSColor.secondaryLabelColor;
-    offLbl.autoresizingMask = NSViewMinXMargin;
+    offLbl.autoresizingMask = NSViewMinXMargin|NSViewMinYMargin;
     [self.layoutView addSubview:offLbl];
 
-    NSStepper *stepper = [[NSStepper alloc] initWithFrame:NSMakeRect(body.size.width - 60, body.size.height - 30, 20, 26)];
+    NSStepper *stepper = [[NSStepper alloc] initWithFrame:
+        NSMakeRect(body.size.width - 60, body.size.height - 33, 20, 26)];
     stepper.minValue = -8; stepper.maxValue = 8; stepper.increment = 1;
-    stepper.valueWraps = NO;
     stepper.target = self;
     stepper.action = @selector(previewOffsetChanged:);
-    stepper.autoresizingMask = NSViewMinXMargin;
+    stepper.autoresizingMask = NSViewMinXMargin|NSViewMinYMargin;
     [self.layoutView addSubview:stepper];
 
     self.previewOffsetLabel = [NSTextField labelWithString:@"0"];
-    self.previewOffsetLabel.frame = NSMakeRect(body.size.width - 96, body.size.height - 27, 30, 18);
+    self.previewOffsetLabel.frame = NSMakeRect(body.size.width - 96, body.size.height - 30, 30, 18);
     self.previewOffsetLabel.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightMedium];
     self.previewOffsetLabel.alignment = NSTextAlignmentRight;
-    self.previewOffsetLabel.autoresizingMask = NSViewMinXMargin;
+    self.previewOffsetLabel.autoresizingMask = NSViewMinXMargin|NSViewMinYMargin;
     [self.layoutView addSubview:self.previewOffsetLabel];
 
-    self.fitWarning = [[PGMPassLabel alloc] initWithFrame:
-        NSMakeRect(324, body.size.height - 28, MAX(body.size.width - 560, 120), 18)];
-    self.fitWarning.stringValue = @"";
-    self.fitWarning.bezeled = NO;
-    self.fitWarning.drawsBackground = NO;
-    self.fitWarning.editable = NO;
-    self.fitWarning.selectable = NO;
-    self.fitWarning.font = [NSFont systemFontOfSize:11];
-    self.fitWarning.textColor = NSColor.systemRedColor;
-    self.fitWarning.autoresizingMask = NSViewWidthSizable;
-    [self.layoutView addSubview:self.fitWarning];
-
-    NSScrollView *sv = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, panelW, body.size.height - 38)];
-    sv.autoresizingMask = NSViewHeightSizable;
+    // 左面板（可滚动）
+    self.layoutDoc = [[PGMFlippedView alloc] initWithFrame:NSMakeRect(0, 0, 430, 400)];
+    NSScrollView *sv = [[NSScrollView alloc] initWithFrame:
+        NSMakeRect(0, 0, 430, body.size.height - 42)];
     sv.hasVerticalScroller = YES;
     sv.drawsBackground = NO;
-    sv.documentView = doc;
-    self.layoutDoc = doc;
-
-    self.layoutPanelWidth = panelW;
-    self.layoutPanel = sv;
+    sv.documentView = self.layoutDoc;
     [self.layoutView addSubview:sv];
+    self.layoutPanel = sv;
 
+    // 右侧预览
     Class dv = NSClassFromString(@"PGMDivider");
-    self.layoutDivider = [[dv alloc] initWithFrame:NSMakeRect(panelW, 0, 6, body.size.height - 38)];
+    self.layoutDivider = [[dv alloc] initWithFrame:NSMakeRect(430, 0, 6, body.size.height - 42)];
     self.layoutDivider.autoresizingMask = NSViewHeightSizable;
     __weak typeof(self) ws = self;
     self.layoutDivider.onDrag = ^(CGFloat x) {
-        CGFloat w = MIN(MAX(x, 360), ws.layoutView.bounds.size.width - 240);
+        CGFloat w = MIN(MAX(x, 320), ws.layoutView.bounds.size.width - 260);
         ws.layoutPanelWidth = w;
         [ws layoutPanes];
     };
@@ -1411,8 +1310,115 @@ static BOOL isAudio(NSString *p) {
     self.previewView = [[pv alloc] initWithFrame:NSMakeRect(0, 0, 10, 10)];
     [self.layoutView addSubview:(NSView *)self.previewView];
 
+    self.layoutPanelWidth = 430;
     [self layoutPanes];
+    [self rebuildLayoutRows];
 }
+
+- (void)sectionChanged:(NSSegmentedControl *)sc {
+    self.curSection = sc.selectedSegment;
+    [self rebuildLayoutRows];
+}
+
+- (void)rebuildLayoutRows {
+    NSView *doc = self.layoutDoc;
+    if (!doc) return;
+    for (NSView *v in doc.subviews.copy) [v removeFromSuperview];
+    [self.layoutRows removeAllObjects];
+
+    NSDictionary *sec = self.layoutSections[self.curSection];
+    CGFloat y = 10;
+    CGFloat pw = self.layoutPanelWidth;
+
+    if (self.curSection == 0) {                       // 素材替换
+        for (NSUInteger i = 0; i < self.swapSpecs.count; i++) {
+            NSDictionary *d = self.swapSpecs[i];
+            NSTextField *t = [NSTextField labelWithString:d[@"title"]];
+            t.frame = NSMakeRect(16, y + 10, 76, 18);
+            t.font = [NSFont systemFontOfSize:12];
+            [doc addSubview:t];
+
+            NSTextField *info = [NSTextField labelWithString:
+                [NSString stringWithFormat:@"%@  (%@×%@)", d[@"file"], d[@"w"], d[@"h"]]];
+            info.frame = NSMakeRect(96, y + 11, MAX(pw - 300, 120), 16);
+            info.font = [NSFont monospacedSystemFontOfSize:10 weight:NSFontWeightRegular];
+            info.textColor = NSColor.secondaryLabelColor;
+            info.lineBreakMode = NSLineBreakByTruncatingMiddle;
+            [doc addSubview:info];
+
+            NSButton *sw = [NSButton buttonWithTitle:@"换图片…" target:self action:@selector(swapAsset:)];
+            sw.frame = NSMakeRect(pw - 168, y + 4, 92, 28);
+            sw.tag = i;
+            [doc addSubview:sw];
+
+            NSButton *rs = [NSButton buttonWithTitle:@"恢复" target:self action:@selector(restoreAsset:)];
+            rs.frame = NSMakeRect(pw - 72, y + 4, 60, 28);
+            rs.tag = i;
+            rs.toolTip = @"换回 PGM 自带的原始素材";
+            [doc addSubview:rs];
+            y += 40;
+        }
+        doc.frame = NSMakeRect(0, 0, pw, y + 10);
+        return;
+    }
+
+    for (NSArray *k in sec[@"rows"]) {
+        NSTextField *lbl = [NSTextField labelWithString:k[3]];
+        lbl.frame = NSMakeRect(16, y + 10, 84, 18);
+        lbl.font = [NSFont systemFontOfSize:12];
+        [doc addSubview:lbl];
+
+        NSSlider *sl = [[NSSlider alloc] initWithFrame:NSMakeRect(104, y + 6, 200, 26)];
+        sl.minValue = [k[1] doubleValue];
+        sl.maxValue = [k[2] doubleValue];
+        sl.identifier = k[0];
+        sl.target = self;
+        sl.action = @selector(layoutSliderChanged:);
+        sl.continuous = YES;
+        [doc addSubview:sl];
+
+        NSTextField *val = [NSTextField labelWithString:@"—"];
+        val.font = [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightMedium];
+        val.textColor = NSColor.labelColor;
+        val.alignment = NSTextAlignmentRight;
+        val.toolTip = k[0];
+        [doc addSubview:val];
+
+        [self.layoutRows addObject:@[ sl, val, lbl ]];
+        self.layoutReadouts[k[0]] = val;
+        self.layoutSliders[k[0]] = sl;
+        if (!self.layoutValues[k[0]]) self.layoutValues[k[0]] = @(sl.minValue);
+        y += 44;
+    }
+    doc.frame = NSMakeRect(0, 0, pw, y + 10);
+
+    // 应用已读到的值
+    for (NSString *key in self.layoutSliders) {
+        NSNumber *v = self.layoutValues[key];
+        if (v) {
+            self.layoutSliders[key].doubleValue = v.doubleValue;
+            self.layoutReadouts[key].stringValue = [NSString stringWithFormat:@"%d", v.intValue];
+        }
+    }
+    [self positionLayoutRows];
+    [self.previewView setValue:@(self.curSection) forKey:@"activeSection"];
+    [(NSView *)self.previewView setNeedsDisplay:YES];
+}
+
+- (void)positionLayoutRows {
+    CGFloat pw = MAX(self.layoutPanelWidth, 320);
+    if (self.layoutDoc) self.layoutDoc.frame =
+        NSMakeRect(0, 0, pw, self.layoutDoc.frame.size.height);
+    CGFloat valW = 64, valX = pw - valW - 12;
+    CGFloat sliderX = 104, sliderW = MAX(valX - sliderX - 10, 80);
+    for (NSArray *row in self.layoutRows) {
+        NSSlider *sl = row[0];
+        NSTextField *val = row[1];
+        sl.frame = NSMakeRect(sliderX, sl.frame.origin.y, sliderW, 26);
+        val.frame = NSMakeRect(valX, val.frame.origin.y, valW, 18);
+    }
+}
+
 
 - (void)layoutSliderChanged:(NSSlider *)sl {
     self.layoutValues[sl.identifier] = @(sl.doubleValue);
@@ -1462,18 +1468,7 @@ static BOOL isAudio(NSString *p) {
     CGFloat H = self.layoutView.bounds.size.height - 38;
     CGFloat pw = MAX(self.layoutPanelWidth, 360);
 
-    // 左边内容跟着面板宽度一起伸缩
-    if (self.layoutDoc) {
-        self.layoutDoc.frame = NSMakeRect(0, 0, pw, self.layoutDoc.frame.size.height);
-        CGFloat valW = 64, valX = pw - valW - 12;
-        CGFloat sliderX = 96, sliderW = MAX(valX - sliderX - 12, 70);
-        for (NSArray *row in self.layoutRows) {
-            NSSlider *sl = row[0];
-            NSTextField *val = row[1];
-            sl.frame = NSMakeRect(sliderX, sl.frame.origin.y, sliderW, 24);
-            val.frame = NSMakeRect(valX, val.frame.origin.y, valW, 18);
-        }
-    }
+    [self positionLayoutRows];
     self.layoutPanel.frame = NSMakeRect(0, 0, pw, H);
     self.layoutDivider.frame = NSMakeRect(pw, 0, 6, H);
     NSView *pv = (NSView *)self.previewView;
@@ -1764,6 +1759,7 @@ static BOOL isAudio(NSString *p) {
 @property (assign) BOOL showHand;
 @property (assign) NSInteger textOffset;
 @property (assign) BOOL showTitle;
+@property (assign) NSInteger activeSection;
 @property (strong) NSFont *gameFont;
 @end
 
@@ -1845,6 +1841,12 @@ static BOOL isAudio(NSString *p) {
         th.lineWidth = 1; [th stroke];
     }
 
+    BOOL secDialog = (self.activeSection == 1);
+    BOOL secRamus  = (self.activeSection == 2);
+    BOOL secTitle  = (self.activeSection == 3);
+    BOOL secMenu   = (self.activeSection == 4);
+
+    if (secDialog) {
     // 人名：先画字格边界（红框），再画字
     [[NSColor colorWithCalibratedRed:1 green:0.2 blue:0.2 alpha:0.55] setStroke];
     NSBezierPath *nbox = [NSBezierPath bezierPathWithRect:NSMakeRect(nameDX, nameDY, 32, 18)];
@@ -1863,8 +1865,10 @@ static BOOL isAudio(NSString *p) {
                withAttributes:attr];
     }
 
+    }   // secDialog
+
     // 选项：同样用真图（ramus_bg.png 是上下两帧，58px 一帧）
-    NSInteger optN = self.optionCount > 0 ? self.optionCount : 2;
+    NSInteger optN = (secRamus && self.optionCount > 0) ? self.optionCount : 0;
     for (NSInteger i = 0; i < optN; i++) {
         NSRect r = NSMakeRect(0, ramDY + i * ramStep, 480, 58);
         if (r.origin.y + 58 > 272) break;
@@ -1882,7 +1886,7 @@ static BOOL isAudio(NSString *p) {
     }
 
     // 标题画面按钮（80x70）
-    if (self.showTitle && self.values[@"TITLE_BUTTON_DX"]) {
+    if (secTitle && self.values[@"TITLE_BUTTON_DX"]) {
         int tdx = [self.values[@"TITLE_BUTTON_DX"] intValue];
         int tdy = [self.values[@"TITLE_BUTTON_DY"] intValue];
         int tstep = [self.values[@"TITLE_BUTTON_STEP_DY"] intValue];
@@ -1896,8 +1900,21 @@ static BOOL isAudio(NSString *p) {
         }
     }
 
+    // 菜单按钮（5 个竖排）
+    if (secMenu) {
+        int mdx = [self.values[@"MENU_BUTTON_DX"] intValue];
+        int mdy = [self.values[@"MENU_BUTTON_DY"] intValue];
+        int mstep = [self.values[@"MENU_BUTTON_STEP_DY"] intValue];
+        [[NSColor colorWithCalibratedRed:0.95 green:0.75 blue:0.35 alpha:0.5] setStroke];
+        for (int i = 0; i < 5; i++) {
+            NSRect r = NSMakeRect(mdx, mdy + i * mstep, 90, 24);
+            NSBezierPath *b = [NSBezierPath bezierPathWithRoundedRect:r xRadius:4 yRadius:4];
+            b.lineWidth = 1.2; [b stroke];
+        }
+    }
+
     // 手型图标
-    if (self.showHand) {
+    if (self.showHand && secRamus) {
         if (self.handImage) {
             [self.handImage drawInRect:NSMakeRect(6, iconDY - 12, 32, 32)
                               fromRect:NSZeroRect operation:NSCompositingOperationSourceOver
