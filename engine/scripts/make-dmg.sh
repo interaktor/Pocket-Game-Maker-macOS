@@ -15,6 +15,39 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$REL/pgm-studio" "$APP/Contents/MacOS/PGM Studio"
 cp "$REL/pgm-mac"    "$APP/Contents/MacOS/pgm-mac"     # 运行按钮要用
+
+# 引擎依赖 libpng/libjpeg/libgif/libfreetype/libz（MacPorts 装在最前面），
+# 一并打包并改写加载路径，否则到了没装 MacPorts 的机器上「运行」按钮起不来。
+# 注意依赖是传递的（如 freetype → libbz2），要递归收集。
+echo ">> 内置引擎依赖"
+mkdir -p "$APP/Contents/Frameworks"
+QUEUE=$(otool -L "$APP/Contents/MacOS/pgm-mac" | awk 'NR>1 {print $1}' \
+	| grep -E '^/(opt|usr/local)/' || true)
+while [ -n "$QUEUE" ]; do
+	NEXT=""
+	for d in $QUEUE; do
+		base=$(basename "$d")
+		[ -e "$APP/Contents/Frameworks/$base" ] && continue
+		cp "$d" "$APP/Contents/Frameworks/$base"
+		chmod u+w "$APP/Contents/Frameworks/$base"
+		install_name_tool -id "@executable_path/../Frameworks/$base" \
+			"$APP/Contents/Frameworks/$base" 2>/dev/null || true
+		NEXT="$NEXT $(otool -L "$d" | awk 'NR>1 {print $1}' \
+			| grep -E '^/(opt|usr/local)/' || true)"
+	done
+	QUEUE="$NEXT"
+done
+# 库与引擎里所有指向 /opt、/usr/local 的引用一律改写
+for f in "$APP/Contents/Frameworks/"*.dylib "$APP/Contents/MacOS/pgm-mac"; do
+	[ -e "$f" ] || continue
+	otool -L "$f" | awk 'NR>1 {print $1}' | grep -E '^/(opt|usr/local)/' \
+		| while read -r old; do
+			install_name_tool -change "$old" \
+				"@executable_path/../Frameworks/$(basename "$old")" "$f" \
+				2>/dev/null || true
+		done
+done
+
 cp "$ROOT/engine/scripts/export-iso.sh" "$APP/Contents/Resources/" 2>/dev/null || true
 cp "$ROOT/engine/scripts/mkiso.py" "$APP/Contents/Resources/" 2>/dev/null || true
 chmod +x "$APP/Contents/Resources/mkiso.py" 2>/dev/null || true
@@ -58,6 +91,13 @@ echo ">> 签名（ad-hoc）"
 codesign --force --deep -s - "$APP" 2>/dev/null || true
 
 echo ">> 生成分发包"
+# 暂存目录：放 App + 指向 /Applications 的快捷方式，方便拖拽安装
+STAGE="$ROOT/build/dmg-stage"
+rm -rf "$STAGE"
+mkdir -p "$STAGE"
+cp -R "$APP" "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+
 rm -rf "$OUT"
 if hdiutil create -volname "PGM Studio" -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$OUT" >/dev/null 2>&1; then
 	echo "完成: $OUT ($(du -h "$OUT" | cut -f1))"
