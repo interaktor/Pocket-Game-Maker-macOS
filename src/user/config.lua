@@ -100,3 +100,7 @@ TITLE_BUTTON_DX      = 200    -- 第一个按钮左边
 TITLE_BUTTON_DY      = 110    -- 第一个按钮顶端
 TITLE_BUTTON_STEP_DX = 0      -- 横向间隔
 TITLE_BUTTON_STEP_DY = 78     -- 纵向间隔
+
+-- 标题画面那个"选中指示"图。blank.png 是 480x272 的整张黑图，
+-- 画在角落会变成一块黑方块，所以默认用全透明的 none.png。
+TITLE_ICON = "none.png"
