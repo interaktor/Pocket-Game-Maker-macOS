@@ -1417,7 +1417,18 @@ static BOOL isAudio(NSString *p) {
         }
     }
     [self positionLayoutRows];
+    [self.previewView setValue:self.layoutValues forKey:@"values"];
     [self.previewView setValue:@(self.curSection) forKey:@"activeSection"];
+    if (getenv("PGM_STUDIO_DEBUG"))
+        fprintf(stdout, "  [预览] 分组=%ld 框=%d 人名=%d,%d 正文=%d,%d 选项=%d/%d\n",
+                (long)self.curSection,
+                [self.layoutValues[@"MSGBOX_DY"] intValue],
+                [self.layoutValues[@"DIALOG_NAME_DX"] intValue],
+                [self.layoutValues[@"DIALOG_NAME_DY"] intValue],
+                [self.layoutValues[@"MSGTEXT_DX"] intValue],
+                [self.layoutValues[@"MSGTEXT_DY"] intValue],
+                [self.layoutValues[@"RAMUS_BUTTON_BG_DY"] intValue],
+                [self.layoutValues[@"RAMUS_BUTTON_STEP_DY"] intValue]);
     [(NSView *)self.previewView setNeedsDisplay:YES];
 }
 
