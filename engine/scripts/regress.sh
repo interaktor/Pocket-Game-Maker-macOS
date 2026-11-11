@@ -71,6 +71,36 @@ else
 	FAIL=1
 fi
 
+echo ">> 导出 ISO：自定义图标/背景/标题"
+ICON="$TMP/icon0.png"
+PIC="$TMP/pic1.png"
+ISO="$TMP/game.iso"
+BACKDROP="$TMP/projroot/proj/src/files/bg/backdrop.png"
+sips -z 80 144 "$BACKDROP" --out "$ICON" >/dev/null 2>&1
+sips -z 272 480 "$BACKDROP" --out "$PIC" >/dev/null 2>&1
+if sh "$ROOT/engine/scripts/export-iso.sh" "$TMP/projroot/proj" "$ISO" \
+	"回归测试" "" "$ICON" "$PIC" >"$TMP/iso.log" 2>&1 &&
+	[ -f "$ISO" ] &&
+	grep -q '自定义图标' "$TMP/iso.log" &&
+	grep -q '自定义背景' "$TMP/iso.log" &&
+	grep -q '标题 = 回归测试' "$TMP/iso.log"; then
+	if command -v bsdtar >/dev/null 2>&1; then
+		LIST=$(bsdtar -tf "$ISO" 2>/dev/null || true)
+		case "$LIST" in
+			*ICON0.PNG*PIC1.PNG*|*PIC1.PNG*ICON0.PNG*)
+				say "  iso" "OK（含 ICON0/PIC1）" ;;
+			*)
+				say "  iso" "失败（ISO 里缺图标或背景图）"; FAIL=1 ;;
+		esac
+	else
+		say "  iso" "OK（无 bsdtar，跳过内容校验）"
+	fi
+else
+	say "  iso" "失败"
+	tail -8 "$TMP/iso.log" | sed 's/^/    /' || true
+	FAIL=1
+fi
+
 echo
 if [ "$FAIL" = "0" ]; then
 	echo "回归通过 ✓"

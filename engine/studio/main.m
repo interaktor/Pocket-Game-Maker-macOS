@@ -60,6 +60,38 @@ static NSSize imageSizeAtPath(NSString *path) {
                       [p[(id)kCGImagePropertyPixelHeight] doubleValue]);
 }
 
+// PSP 的 ICON0 / PIC1 要求精确尺寸，这里等比缩放后写成 PNG
+static BOOL saveScaledPNG(NSString *src, NSSize target, NSString *dst) {
+    CGImageSourceRef s = CGImageSourceCreateWithURL(
+        (__bridge CFURLRef)[NSURL fileURLWithPath:src], NULL);
+    if (!s) return NO;
+    CGImageRef img = CGImageSourceCreateImageAtIndex(s, 0, NULL);
+    CFRelease(s);
+    if (!img) return NO;
+    size_t w = (size_t)target.width, h = (size_t)target.height;
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(NULL, w, h, 8, w * 4, cs,
+        kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(cs);
+    if (!ctx) { CGImageRelease(img); return NO; }
+    CGContextSetInterpolationQuality(ctx, kCGInterpolationHigh);
+    CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), img);
+    CGImageRelease(img);
+    CGImageRef out = CGBitmapContextCreateImage(ctx);
+    CGContextRelease(ctx);
+    if (!out) return NO;
+    CGImageDestinationRef d = CGImageDestinationCreateWithURL(
+        (__bridge CFURLRef)[NSURL fileURLWithPath:dst],
+        (__bridge CFStringRef)@"public.png", 1, NULL);
+    if (!d) { CGImageRelease(out); return NO; }
+    CGImageDestinationAddImage(d, out, NULL);
+    BOOL ok = CGImageDestinationFinalize(d);
+    CFRelease(d);
+    CGImageRelease(out);
+    return ok;
+}
+
+
 @interface PGMFlippedView : NSView
 @property (copy) void (^onFileDrop)(NSArray<NSURL *> *urls);
 @end
@@ -109,6 +141,82 @@ static NSSize imageSizeAtPath(NSString *path) {
 @implementation PGMPassLabel
 - (NSView *)hitTest:(NSPoint)point { return nil; }   // 标签不吃鼠标事件
 @end
+
+// 导出 ISO 的选项：标题 + 游戏图标（ICON0）+ 背景图（PIC1）
+@interface ISOOptions : NSObject
+@property (strong) NSView *view;
+@property (strong) NSTextField *titleField;
+@property (strong) NSTextField *iconLabel;
+@property (strong) NSTextField *bgLabel;
+@property (copy) NSString *iconPath;
+@property (copy) NSString *bgPath;
+@end
+
+@implementation ISOOptions
+- (instancetype)initWithTitle:(NSString *)title {
+    if ((self = [super init])) {
+        NSView *v = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 380, 100)];
+
+        NSTextField *tLbl = [NSTextField labelWithString:@"标题"];
+        tLbl.frame = NSMakeRect(0, 76, 40, 18);
+        tLbl.font = [NSFont systemFontOfSize:12];
+        [v addSubview:tLbl];
+
+        _titleField = [[NSTextField alloc] initWithFrame:NSMakeRect(44, 72, 336, 24)];
+        _titleField.stringValue = title ?: @"";
+        [v addSubview:_titleField];
+
+        NSButton *iconBtn = [NSButton buttonWithTitle:@"选图标…" target:self action:@selector(chooseIcon:)];
+        iconBtn.frame = NSMakeRect(0, 42, 92, 24);
+        [v addSubview:iconBtn];
+        _iconLabel = [PGMPassLabel labelWithString:@"未选（144×80，用模板默认图）"];
+        _iconLabel.frame = NSMakeRect(100, 45, 280, 18);
+        _iconLabel.font = [NSFont systemFontOfSize:11];
+        _iconLabel.textColor = NSColor.secondaryLabelColor;
+        _iconLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+        [v addSubview:_iconLabel];
+
+        NSButton *bgBtn = [NSButton buttonWithTitle:@"选背景…" target:self action:@selector(chooseBG:)];
+        bgBtn.frame = NSMakeRect(0, 8, 92, 24);
+        [v addSubview:bgBtn];
+        _bgLabel = [PGMPassLabel labelWithString:@"未选（480×272，不加背景图）"];
+        _bgLabel.frame = NSMakeRect(100, 11, 280, 18);
+        _bgLabel.font = [NSFont systemFontOfSize:11];
+        _bgLabel.textColor = NSColor.secondaryLabelColor;
+        _bgLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+        [v addSubview:_bgLabel];
+
+        self.view = v;
+    }
+    return self;
+}
+
+- (void)pickInto:(void (^)(NSString *path))done {
+    NSOpenPanel *op = [NSOpenPanel openPanel];
+    op.canChooseFiles = YES;
+    op.canChooseDirectories = NO;
+    op.allowedFileTypes = @[@"png", @"jpg", @"jpeg"];
+    if ([op runModal] != NSModalResponseOK || !op.URL) return;
+    done(op.URL.path);
+}
+
+- (void)chooseIcon:(id)sender {
+    [self pickInto:^(NSString *p) {
+        self.iconPath = p;
+        self.iconLabel.stringValue = p.lastPathComponent;
+        self.iconLabel.textColor = NSColor.labelColor;
+    }];
+}
+
+- (void)chooseBG:(id)sender {
+    [self pickInto:^(NSString *p) {
+        self.bgPath = p;
+        self.bgLabel.stringValue = p.lastPathComponent;
+        self.bgLabel.textColor = NSColor.labelColor;
+    }];
+}
+@end
+
 
 
 @interface StudioController : NSObject <NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSTextViewDelegate>
@@ -967,12 +1075,36 @@ static NSString *PGMSampleMainScript(void) {
     NSString *out = [NSHomeDirectory() stringByAppendingPathComponent:
                         [NSString stringWithFormat:@"Desktop/%@.iso", name]];
 
+    ISOOptions *opt = [[ISOOptions alloc] initWithTitle:self.projectRoot.lastPathComponent];
+    NSAlert *ask = [NSAlert new];
+    ask.messageText = @"导出 PSP ISO";
+    ask.informativeText = @"标题、图标和背景图会写进 ISO；不选就沿用模板里的默认图。";
+    [ask addButtonWithTitle:@"导出"];
+    [ask addButtonWithTitle:@"取消"];
+    ask.accessoryView = opt.view;
+    if ([ask runModal] != NSAlertFirstButtonReturn) return;
+
+    NSString *title = opt.titleField.stringValue.length ? opt.titleField.stringValue : name;
+    NSString *iconSrc = opt.iconPath, *bgSrc = opt.bgPath;
+
     self.status.stringValue = @"正在生成 ISO…（大约十几秒）";
 
     dispatch_async(dispatch_get_global_queue(0, 0), ^{
+        // 缩放到 PSP 要求的精确尺寸；失败就退回模板默认图
+        NSString *iconOut = nil, *bgOut = nil;
+        NSString *tmp = NSTemporaryDirectory();
+        if (iconSrc.length) {
+            NSString *p = [tmp stringByAppendingPathComponent:@"pgm_icon0.png"];
+            if (saveScaledPNG(iconSrc, NSMakeSize(144, 80), p)) iconOut = p;
+        }
+        if (bgSrc.length) {
+            NSString *p = [tmp stringByAppendingPathComponent:@"pgm_pic1.png"];
+            if (saveScaledPNG(bgSrc, NSMakeSize(480, 272), p)) bgOut = p;
+        }
         NSTask *t = [NSTask new];
         t.executableURL = [NSURL fileURLWithPath:@"/bin/sh"];
-        t.arguments = @[ script, self.projectRoot, out, name, tpl ];
+        t.arguments = @[ script, self.projectRoot, out, title, tpl,
+                         iconOut ?: @"", bgOut ?: @"" ];
         NSPipe *pipe = [NSPipe pipe];
         t.standardOutput = pipe; t.standardError = pipe;
         BOOL ok = [t launchAndReturnError:NULL] && ([t waitUntilExit], t.terminationStatus == 0);

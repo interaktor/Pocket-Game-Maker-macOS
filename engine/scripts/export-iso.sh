@@ -1,12 +1,14 @@
 #!/bin/sh
 # export-iso.sh — 把工程打成 PSP 用的 ISO
 #
-# 用法: export-iso.sh <工程目录> <输出.iso> [ISO 内显示名] [PSP模板目录]
+# 用法: export-iso.sh <工程目录> <输出.iso> [ISO 内显示名] [PSP模板目录] [ICON0] [PIC1]
 set -e
 GAME="$1"
 OUT="$2"
 TITLE="${3:-PGM Game}"
 TPL="${4:-}"
+ICON="${5:-}"
+PIC1="${6:-}"
 [ -n "$TPL" ] || TPL="$(cd "$(dirname "$0")/.." && pwd)/psp-template"
 
 [ -d "$GAME/bin" ] || { echo "!! $GAME 不是 PGM 工程"; exit 1; }
@@ -19,6 +21,17 @@ trap 'rm -rf "$STAGE"' EXIT
 echo ">> 复制 PSP_GAME 模板"
 cp -R "$TPL/PSP_GAME" "$STAGE/PSP_GAME"
 SD="$STAGE/PSP_GAME/SYSDIR"
+
+if [ -n "$ICON" ]; then
+	[ -f "$ICON" ] || { echo "!! 图标文件不存在: $ICON"; exit 1; }
+	cp "$ICON" "$STAGE/PSP_GAME/ICON0.PNG"
+	echo ">> 使用自定义图标 $(basename "$ICON")"
+fi
+if [ -n "$PIC1" ]; then
+	[ -f "$PIC1" ] || { echo "!! 背景图不存在: $PIC1"; exit 1; }
+	cp "$PIC1" "$STAGE/PSP_GAME/PIC1.PNG"
+	echo ">> 使用自定义背景图 $(basename "$PIC1")"
+fi
 
 echo ">> 放入游戏数据"
 cp -R "$GAME/bin/data" "$SD/data"

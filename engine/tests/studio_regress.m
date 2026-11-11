@@ -231,6 +231,16 @@ int main(int argc, const char *argv[]) {
         check(hasEdit, @"主菜单含标准编辑菜单（撤销/复制/粘贴/全选）");
         check(hasUndo && hasCopy && hasPaste && hasAll, @"编辑菜单各项齐全");
 
+        // ---- PSP 图标/背景图缩放 ----
+        NSString *iconOut = [tmp stringByAppendingPathComponent:@"icon0.png"];
+        NSString *picOut  = [tmp stringByAppendingPathComponent:@"pic1.png"];
+        check(saveScaledPNG(backdrop, NSMakeSize(144, 80), iconOut), @"图标缩放成功");
+        check(saveScaledPNG(backdrop, NSMakeSize(480, 272), picOut), @"背景图缩放成功");
+        NSSize is = imageSizeAtPath(iconOut), ps = imageSizeAtPath(picOut);
+        check(is.width == 144 && is.height == 80, @"图标输出 144×80");
+        check(ps.width == 480 && ps.height == 272, @"背景图输出 480×272");
+        check(imageSizeAtPath(@"/no/such/file.png").width == 0, @"不存在的图片返回空尺寸");
+
         // 把标题重新打开，留给后面的引擎测试跑标题画面
         c.titleChk.state = NSControlStateValueOn;
         [c toggleTitle:c.titleChk];
