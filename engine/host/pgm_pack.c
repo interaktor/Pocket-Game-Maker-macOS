@@ -475,8 +475,7 @@ static int find_by_basename(const char *dir, const char *base,
 	struct dirent *de;
 	int hit = -1;
 
-	if (depth == 0)
-		out[0] = '\0';       /* path_better 要拿它做基准，先清空 */
+	out[0] = '\0';   /* 每层都清：path_better 拿它当"还没有候选"的基准 */
 	if (depth > 8)
 		return -1;
 	d = opendir(dir);
