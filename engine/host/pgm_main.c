@@ -278,5 +278,14 @@ int main(int argc, char *argv[])
 	}
 
 	pgm_log("\n=== 结束 (state=%d, quit=%d) ===\n", g_pgm.state, g_pgm.quit);
+	pgm_shutdown();
 	return 0;
+}
+
+/* 退出清理：音频设备与封包内存收掉。Lua 状态不 close —— 框架里的 __gc
+   会去动已经释放的引擎对象，进程退出时交给系统回收更安全。 */
+void pgm_shutdown(void)
+{
+	pgm_audio_shutdown();
+	pgm_pack_close_all();
 }

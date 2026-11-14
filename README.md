@@ -38,12 +38,17 @@
 
 ## 从源码编译
 
+需要 macOS 10.13 以上、Xcode 命令行工具（`xcode-select --install`）和 Python 3。
+
 ```sh
-brew install libpng jpeg-turbo giflib freetype
+brew install cmake libpng jpeg-turbo giflib freetype
 ./engine/scripts/build.sh Release        # 引擎
 ./engine/scripts/build-studio.sh         # 工作台
 ./engine/scripts/make-dmg.sh             # 打成可分发的包
 ```
+
+用 MacPorts 的话把第一行换成 `sudo port install cmake libpng libjpeg-turbo giflib freetype`。
+第三方库的许可列在 `THIRD_PARTY_NOTICES.md`。
 
 ## 目录
 
@@ -56,7 +61,7 @@ engine/    引擎与工具源码（不用改）
 
 ## 许可
 
-MIT。PGM 作者白枫、libnge2 作者 Kun Wang 均已同意。
+MIT。PGM 作者白枫、libnge2 作者 Kun Wang 均已同意。第三方组件许可见 `THIRD_PARTY_NOTICES.md`。
 
 
 ## 致谢

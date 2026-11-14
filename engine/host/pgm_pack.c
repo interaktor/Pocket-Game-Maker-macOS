@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <dirent.h>
 #include <errno.h>
@@ -76,18 +77,37 @@ int pgm_mkdir_p(const char *path)
 	return 0;
 }
 
+/* 拼路径：比缓冲区长就当作失败，绝不用截断后的半截路径去开文件 */
+static int fmt_path(char *out, size_t outsz, const char *fmt, ...)
+{
+	va_list ap;
+	int n;
+
+	va_start(ap, fmt);
+	n = vsnprintf(out, outsz, fmt, ap);
+	va_end(ap);
+	if (n < 0 || (size_t)n >= outsz) {
+		out[0] = '\0';
+		return -1;
+	}
+	return 0;
+}
+
 /* 存档目录是相对游戏根目录的，不能跟着进程当前目录跑 */
 int pgm_write_path(const char *name, char *out, size_t outsz)
 {
 	char dir[1300];
 	char *slash;
 
-	if (name[0] == '/')
-		snprintf(out, outsz, "%s", name);
-	else
-		snprintf(out, outsz, "%s/%s", g_pgm.root, name);
+	if (name[0] == '/') {
+		if (fmt_path(out, outsz, "%s", name) != 0)
+			return -1;
+	} else if (fmt_path(out, outsz, "%s/%s", g_pgm.root, name) != 0) {
+		return -1;
+	}
 
-	snprintf(dir, sizeof(dir), "%s", out);
+	if (fmt_path(dir, sizeof(dir), "%s", out) != 0)
+		return -1;
 	slash = strrchr(dir, '/');
 	if (slash) {
 		*slash = '\0';
@@ -108,7 +128,9 @@ int pgm_resolve(const char *relpath, char *out, size_t outsz)
 	struct stat st;
 
 	for (i = 0; subdirs[i]; i++) {
-		snprintf(out, outsz, "%s/%s%s", g_pgm.root, subdirs[i], relpath);
+		if (fmt_path(out, outsz, "%s/%s%s", g_pgm.root, subdirs[i],
+					 relpath) != 0)
+			continue;
 		if (stat(out, &st) == 0 && S_ISREG(st.st_mode))
 			return 0;
 	}
@@ -119,8 +141,9 @@ int pgm_resolve(const char *relpath, char *out, size_t outsz)
 	if (strncmp(relpath, "data/", 5) == 0) {
 		const char *rest = relpath + 5;
 		for (i = 0; datakinds[i]; i++) {
-			snprintf(out, outsz, "%s/bin/data/%s%s", g_pgm.root,
-					 datakinds[i], rest);
+			if (fmt_path(out, outsz, "%s/bin/data/%s%s", g_pgm.root,
+						 datakinds[i], rest) != 0)
+				continue;
 			if (stat(out, &st) == 0 && S_ISREG(st.st_mode))
 				return 0;
 		}
@@ -425,6 +448,24 @@ static int looks_binary_pack(const unsigned char *sig, size_t n)
 	return 0;
 }
 
+/* 同名文件可能有好多份：层级浅的优先，同层按字典序，避免结果随
+   readdir 顺序变来变去 */
+static int path_better(const char *a, const char *b)
+{
+	const char *p;
+	int na = 0, nb = 0;
+
+	if (b[0] == '\0')
+		return 1;
+	for (p = a; *p; p++)
+		na += (*p == '/');
+	for (p = b; *p; p++)
+		nb += (*p == '/');
+	if (na != nb)
+		return na < nb;
+	return strcmp(a, b) < 0;
+}
+
 /* 递归按文件名查找：pgrp 打包时把子目录拍平了，所以散装模式下
    也要按 basename 找，作者才能把图随手丢进 src/files/ 任意子目录。 */
 static int find_by_basename(const char *dir, const char *base,
@@ -434,6 +475,8 @@ static int find_by_basename(const char *dir, const char *base,
 	struct dirent *de;
 	int hit = -1;
 
+	if (depth == 0)
+		out[0] = '\0';       /* path_better 要拿它做基准，先清空 */
 	if (depth > 8)
 		return -1;
 	d = opendir(dir);
@@ -445,18 +488,22 @@ static int find_by_basename(const char *dir, const char *base,
 
 		if (de->d_name[0] == '.')
 			continue;
-		snprintf(full, sizeof(full), "%s/%s", dir, de->d_name);
+		if (fmt_path(full, sizeof(full), "%s/%s", dir, de->d_name) != 0)
+			continue;
 		if (stat(full, &st) != 0)
 			continue;
 		if (S_ISDIR(st.st_mode)) {
-			if (find_by_basename(full, base, out, outsz, depth + 1) == 0) {
-				hit = 0;
-				break;
+			char sub[1400];
+
+			if (find_by_basename(full, base, sub, sizeof(sub),
+								 depth + 1) == 0 &&
+				path_better(sub, out)) {
+				if (fmt_path(out, outsz, "%s", sub) == 0)
+					hit = 0;
 			}
-		} else if (strcmp(de->d_name, base) == 0) {
-			snprintf(out, outsz, "%s", full);
-			hit = 0;
-			break;
+		} else if (strcmp(de->d_name, base) == 0 && path_better(full, out)) {
+			if (fmt_path(out, outsz, "%s", full) == 0)
+				hit = 0;
 		}
 	}
 	closedir(d);
@@ -469,12 +516,13 @@ static int dir_mode_open(int h, const char *subdir, const char *why)
 	char path[1024];
 	struct stat st;
 
-	snprintf(path, sizeof(path), "%s/%s", g_pgm.root, subdir);
+	if (fmt_path(path, sizeof(path), "%s/%s", g_pgm.root, subdir) != 0)
+		return -1;
 	if (stat(path, &st) != 0 || !S_ISDIR(st.st_mode))
 		return -1;
 
 	g_pgm.packs[h].kind = PGM_PACK_DIR;
-	snprintf(g_pgm.packs[h].path, sizeof(g_pgm.packs[h].path), "%s", path);
+	fmt_path(g_pgm.packs[h].path, sizeof(g_pgm.packs[h].path), "%s", path);
 	g_pgm.packs[h].data = NULL;
 	g_pgm.packs[h].data_size = 0;
 	g_pgm.packs[h].ents = NULL;
@@ -562,7 +610,7 @@ int pgm_pack_open(const char *path)
 	reconcile_dir(ents, nents, dir_start, data, (size_t)fsz, stride);
 
 	g_pgm.packs[h].kind = (stride == 128) ? PGM_PACK_BIN : PGM_PACK_RES;
-	snprintf(g_pgm.packs[h].path, sizeof(g_pgm.packs[h].path), "%s",
+	fmt_path(g_pgm.packs[h].path, sizeof(g_pgm.packs[h].path), "%s",
 			 resolved);
 	g_pgm.packs[h].data = data;
 	g_pgm.packs[h].data_size = (size_t)fsz;
@@ -753,8 +801,9 @@ static int pack_read_raw(int h, const char *name, char **data, size_t *size)
 		static const char *sub[] = { "", "system/", "user/", "files/", NULL };
 		int i;
 		for (i = 0; sub[i]; i++) {
-			snprintf(path, sizeof(path), "%s/%s%s",
-					 g_pgm.packs[h].path, sub[i], name);
+			if (fmt_path(path, sizeof(path), "%s/%s%s",
+						 g_pgm.packs[h].path, sub[i], name) != 0)
+				continue;
 			f = fopen(path, "rb");
 			if (f)
 				goto found;

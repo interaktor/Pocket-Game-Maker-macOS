@@ -83,6 +83,7 @@ int pgm_resolve(const char *relpath, char *out, size_t outsz);
 int pgm_mkdir_p(const char *path);
 /* 把相对名解析成"游戏根目录下的可写路径"，并顺手建好父目录 */
 int pgm_write_path(const char *name, char *out, size_t outsz);
+void pgm_shutdown(void);
 
 /* ---- 封包 ---- */
 int  pgm_pack_open(const char *path);          /* 返回句柄索引，失败 <0 */
@@ -91,6 +92,7 @@ void pgm_pack_close_all(void);
 
 /* ---- 音频 ---- */
 void pgm_audio_register(lua_State *L);
+void pgm_audio_shutdown(void);
 
 /* ---- 输入回调桥接 ---- */
 int pgm_api_control_init(lua_State *L);

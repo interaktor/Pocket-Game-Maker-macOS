@@ -20,6 +20,16 @@ void pgm_log(const char *fmt, ...)
 
 /* Lua 的 panic 默认 abort()，换成带调用位置的报错器。 */
 
+/* 走到 panic 说明 Lua 内部状态已经不可恢复，打印后正常退出，不要 abort */
+static int pgm_panic(lua_State *L)
+{
+	const char *msg = lua_tostring(L, -1);
+
+	pgm_log("\n!! Lua panic: %s\n", msg ? msg : "(no message)");
+	fflush(stdout);
+	exit(1);
+}
+
 static int pgm_traceback(lua_State *L)
 {
 	const char *msg = lua_tostring(L, 1);
@@ -55,9 +65,7 @@ void pgm_lua_init(void)
 	}
 	luaL_openlibs(L);
 	g_pgm.L = L;
-
-	/* panic 时不要 abort，给出回溯 */
-	(void)pgm_traceback;
+	lua_atpanic(L, pgm_panic);
 }
 
 /* 执行脚本 */
@@ -73,12 +81,18 @@ int pgm_do_string(const char *code, const char *chunkname)
 {
 	lua_State *L = g_pgm.L;
 	int base = lua_gettop(L);
+	int mh;
+
+	/* traceback 必须先入栈，pcall 要求它在被调函数下方 */
+	lua_pushcfunction(L, pgm_traceback);
+	mh = lua_gettop(L);
 
 	if (luaL_loadbuffer(L, code, strlen(code), chunkname) != 0) {
 		report_error(L, chunkname);
+		lua_settop(L, base);
 		return -1;
 	}
-	if (lua_pcall(L, 0, 0, 0) != 0) {
+	if (lua_pcall(L, 0, 0, mh) != 0) {
 		report_error(L, chunkname);
 		lua_settop(L, base);
 		return -1;

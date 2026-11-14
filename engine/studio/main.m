@@ -7,6 +7,27 @@
 
 static const CGFloat kThumbW = 128, kThumbH = 90;
 
+// 图片选择面板的过滤：优先用 macOS 11 起的 UTI 接口；UTType 走运行期取，
+// 这样旧系统上不会因为链了 UniformTypeIdentifiers 而启动失败
+static void restrictToImages(NSOpenPanel *op) {
+    if (@available(macOS 11.0, *)) {
+        Class ut = NSClassFromString(@"UTType");
+        NSMutableArray *types = [NSMutableArray array];
+        for (NSString *ident in @[@"public.png", @"public.jpeg"]) {
+            id t = [ut performSelector:@selector(typeWithIdentifier:) withObject:ident];
+            if (t) [types addObject:t];
+        }
+        if (types.count) {
+            op.allowedContentTypes = types;
+            return;
+        }
+    }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    op.allowedFileTypes = @[@"png", @"jpg", @"jpeg"];
+#pragma clang diagnostic pop
+}
+
 static BOOL validLeafName(NSString *name) {
     if (!name.length || [name isEqualToString:@"."] || [name isEqualToString:@".."])
         return NO;
@@ -70,6 +91,26 @@ static NSSize imageSizeAtPath(NSString *path) {
 }
 
 // PSP 的 ICON0 / PIC1 要求精确尺寸，这里等比缩放后写成 PNG
+// 先写临时文件再 rename 覆盖：中途失败也不会丢掉原来的素材
+static BOOL replaceFileWithData(NSString *dst, NSData *data) {
+    if (!data) return NO;
+    NSString *dir = [dst stringByDeletingLastPathComponent];
+    NSString *tmp = [dir stringByAppendingPathComponent:
+        [NSString stringWithFormat:@".pgm-tmp-%@", NSUUID.UUID.UUIDString]];
+    if (![data writeToFile:tmp atomically:YES]) return NO;
+    if (rename(tmp.fileSystemRepresentation, dst.fileSystemRepresentation) != 0) {
+        [NSFileManager.defaultManager removeItemAtPath:tmp error:NULL];
+        return NO;
+    }
+    return YES;
+}
+
+// 同理，覆盖式拷贝也走临时文件
+static BOOL replaceFileWithCopy(NSString *src, NSString *dst) {
+    NSData *d = [NSData dataWithContentsOfFile:src];
+    return replaceFileWithData(dst, d);
+}
+
 static BOOL saveScaledPNG(NSString *src, NSSize target, NSString *dst) {
     CGImageSourceRef s = CGImageSourceCreateWithURL(
         (__bridge CFURLRef)[NSURL fileURLWithPath:src], NULL);
@@ -204,7 +245,7 @@ static BOOL saveScaledPNG(NSString *src, NSSize target, NSString *dst) {
     NSOpenPanel *op = [NSOpenPanel openPanel];
     op.canChooseFiles = YES;
     op.canChooseDirectories = NO;
-    op.allowedFileTypes = @[@"png", @"jpg", @"jpeg"];
+    restrictToImages(op);
     if ([op runModal] != NSModalResponseOK || !op.URL) return;
     done(op.URL.path);
 }
@@ -1838,8 +1879,7 @@ static NSString *PGMSampleMainScript(void) {
         [a runModal];
         return;
     }
-    [fm removeItemAtPath:dst error:NULL];
-    if (![fm copyItemAtPath:from toPath:dst error:NULL]) {
+    if (!replaceFileWithCopy(from, dst)) {
         self.status.stringValue = @"恢复失败";
         return;
     }
@@ -1857,7 +1897,7 @@ static NSString *PGMSampleMainScript(void) {
     NSOpenPanel *op = [NSOpenPanel openPanel];
     op.canChooseFiles = YES;
     op.canChooseDirectories = NO;
-    op.allowedFileTypes = @[@"png", @"jpg", @"jpeg"];
+    restrictToImages(op);
     op.message = [NSString stringWithFormat:@"选择新的「%@」图片（需要 %.0f×%.0f）",
                   d[@"title"], needW, needH];
     if ([op runModal] != NSModalResponseOK || !op.URL) return;
@@ -1908,16 +1948,13 @@ static NSString *PGMSampleMainScript(void) {
     NSFileManager *fm = NSFileManager.defaultManager;
     if (![fm fileExistsAtPath:bak] && [fm fileExistsAtPath:dst])
         [fm copyItemAtPath:dst toPath:bak error:NULL];
-    [fm removeItemAtPath:dst error:NULL];
-    NSError *err = nil;
-    if (crop.size.width > 0 || !NSEqualSizes(sz, target)) {
-        NSData *png = cropAndScale(src, crop, target);
-        if (!png || ![png writeToFile:dst atomically:YES]) {
-            self.status.stringValue = @"处理图片失败";
-            return;
-        }
-    } else if (![fm copyItemAtPath:src toPath:dst error:&err]) {
-        self.status.stringValue = [NSString stringWithFormat:@"替换失败：%@", err.localizedDescription];
+    BOOL ok;
+    if (crop.size.width > 0 || !NSEqualSizes(sz, target))
+        ok = replaceFileWithData(dst, cropAndScale(src, crop, target));
+    else
+        ok = replaceFileWithCopy(src, dst);
+    if (!ok) {
+        self.status.stringValue = @"处理图片失败，素材未被改动";
         return;
     }
     [self loadPreviewImages];

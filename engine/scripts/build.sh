@@ -11,8 +11,7 @@
 #   * Homebrew: brew install libpng jpeg-turbo giflib freetype
 #   * MacPorts: sudo port install libpng libjpeg-turbo giflib freetype
 #
-# 说明：在 P2 引入 PGM 宿主层之后，这里会换成顶层 CMakeLists.txt 的
-# add_subdirectory 结构；当前阶段 libnge2 自身的 CMakeLists 就是构建入口。
+# libnge2 的 CMakeLists 是构建入口，PGM 宿主层在它之后单独编译。
 
 set -e
 

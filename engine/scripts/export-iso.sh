@@ -59,10 +59,14 @@ for i in range(count):
     key = bytes(b[kstart:b.index(0, kstart)]).decode('ascii','ignore')
     if key != 'TITLE':
         continue
-    raw = title.encode('utf-8') + b'\0'
-    if len(raw) > dmax:
-        raw = title.encode('utf-8')[:dmax-1] + b'\0'
-        print(f"  标题过长，已截断到 {dmax-1} 字节")
+    t = title
+    raw = t.encode('utf-8') + b'\0'
+    # 按字符截，不能从 UTF-8 多字节中间切，否则 SFO 里是非法编码
+    while len(raw) > dmax and t:
+        t = t[:-1]
+        raw = t.encode('utf-8') + b'\0'
+    if t != title:
+        print(f"  标题过长，截断为「{t}」")
     b[datatab+doff:datatab+doff+dmax] = raw + b'\0'*(dmax-len(raw))
     struct.pack_into('<I', b, off+4, len(raw))
     open(path,'wb').write(bytes(b))

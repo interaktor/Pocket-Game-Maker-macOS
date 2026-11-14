@@ -323,6 +323,26 @@ static int api_SoundDelete(lua_State *L)
 	return 0;
 }
 
+void pgm_audio_shutdown(void)
+{
+	int i;
+
+	for (i = 0; i < MP3_SLOTS; i++) {
+		if (g_mp3[i]) {
+			g_mp3[i]->stop(g_mp3[i]);
+			g_mp3[i]->destroy(g_mp3[i]);
+			g_mp3[i] = NULL;
+		}
+	}
+	for (i = 0; i < SND_SLOTS; i++) {
+		if (g_snd[i]) {
+			g_snd[i]->stop(g_snd[i]);
+			g_snd[i]->destroy(g_snd[i]);
+			g_snd[i] = NULL;
+		}
+	}
+}
+
 void pgm_audio_register(lua_State *L)
 {
 	static const struct { const char *name; lua_CFunction fn; } api[] = {
