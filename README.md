@@ -1,8 +1,20 @@
-# PGM for Mac
+# PGM Studio — Pocket Game Maker for macOS
 
-把 Pocket Game Maker（白枫 / 掌机开发者之家 的 PSP 视觉小说引擎）移植到 **macOS 原生**。
+**Pocket Game Maker (PGM)** 是白枫 / 掌机开发者之家做的 PSP 文字游戏引擎，圈内也叫
+「PGM 引擎」，用来制作和移植视觉小说、文字 ADV。原版只有 Windows 打包工具，没有 Mac 版。
 
-配套一个图形化工作台 **PGM Studio**：不用命令行，不用改配置文件，双击就能做游戏。
+这个项目用 **macOS 原生**重写了整套开发环境，叫 **PGM Studio**：
+
+- 原生 App（Apple Silicon + Intel），不是 Wine / 虚拟机
+- 素材浏览、剧本编辑、界面布局、一键运行
+- 导出的游戏能直接发给别人双击玩，也能导出 PSP 用的 ISO
+- 兼容原版 PGM 和 PGM_CE 的工程与 `.ev` 脚本
+
+### 关键词 / Keywords
+
+`Pocket Game Maker` `PGM` `PGM Studio` `PGM_CE` `白枫` `掌机开发者之家` `掌机自制游戏`
+`PSP homebrew` `PSP visual novel` `文字游戏` `视觉小说` `AVG` `Galgame` `Lua`
+`macOS 移植` `Apple Silicon` `PPSSPP` `ISO` `同人游戏` `KiriKiri` `NScripter` `ONScripter`
 
 ## 两种用法
 
