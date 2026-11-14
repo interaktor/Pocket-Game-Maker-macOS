@@ -39,6 +39,11 @@ cp -R "$GAME/bin/data" "$SD/data"
 [ -f "$GAME/bin/pgm.ini" ]    && cp "$GAME/bin/pgm.ini"    "$SD/pgm.ini"
 rm -rf "$SD/data/PGMSAVEDATA"
 
+echo ">> 打包脚本与图片"
+# PSP 引擎只认 gmcode.bin / gmdata.bin，原版靠 Windows 的 pgsp/pgrp，
+# 这里用 pack-data.py 直接生成同格式的封包。
+python3 "$(dirname "$0")/pack-data.py" "$GAME" "$SD/data"
+
 echo ">> 写入标题"
 python3 - "$STAGE/PSP_GAME/PARAM.SFO" "$TITLE" <<'PY'
 import sys, struct

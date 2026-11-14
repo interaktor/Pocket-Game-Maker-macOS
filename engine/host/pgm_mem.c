@@ -1,21 +1,6 @@
-/***************************************************************************
- *            pgm_mem.c
- *
- *  PGM 的"内存缓冲区 + 定长字段读写"API。
- *
- *  PGM 的存档系统把结构体手工序列化到一块裸内存里，Lua 侧的写法是：
- *
- *      local buffer,size = PGBufferCreate(1024 * 64)
- *      local offset = 0
- *      MEMNUMCPY(buffer+offset, 65535, MEM_SINT32)
- *      offset = offset + MEMMODESIZE(MEM_SINT32)
- *      MEMSTRCPY(buffer+offset, GAME_NAME, MEM_UINT8_64)
- *
- *  所以 **PGBufferCreate 返回的是数字地址**（不是 userdata），Lua 里才能直接
- *  做 `buffer + offset` 的指针算术。地址用 double 存，arm64 的 48 位指针精度足够。
- *
- *  为了安全，所有分配到一块登记表里，MEM* 在写入前会检查是否越界。
- ***************************************************************************/
+/*
+ *  pgm_mem.c — PGM 的"内存缓冲区 + 定长字段读写"API。
+ */
 
 #include <stdio.h>
 #include <stdlib.h>

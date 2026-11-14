@@ -30,7 +30,8 @@ engine/    引擎与工具源码（不用改）
 
 ## 许可
 
-BSD 3-Clause。`src/system/` 下的框架脚本版权归白枫。
+MIT。PGM 作者白枫、libnge2 作者 Kun Wang 均已同意。
+
 
 ## 致谢
 

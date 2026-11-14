@@ -1,19 +1,6 @@
-/***************************************************************************
- *            pgm_dialog.c
- *
- *  DialogCreate(text) —— 把对话文本解析成"绘制单元"数组。
- *
- *  SpeakScene.lua 逐帧消费这个数组，按 unit.type 决定怎么画：
- *
- *    PGD_UINT8    单字节字符（ASCII），绘制后宽度 +DIALOG_FONT_WIDTH
- *    PGD_SINT8    双字节字符（GBK 汉字），按实际字形宽度前进
- *    PGD_NEWLINE  换行，value = 换几行
- *    PGD_TABLE    连续空格，value = 个数
- *    PGD_COLOR    [c=RRGGBB] 开始着色，value = 颜色
- *    PGD_DCOLOR   [/c] 结束着色
- *
- *  返回 table：{ [1..count] = {type=, value=}, count = n }
- ***************************************************************************/
+/*
+ *  pgm_dialog.c — DialogCreate(text) —— 把对话文本解析成"绘制单元"数组。
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -181,6 +168,8 @@ static int api_DialogCreate(lua_State *L)
 
 	lua_pushinteger(L, d.n);
 	lua_setfield(L, -2, "count");
+	if (getenv("PGM_MAC_DEBUG_TEXT"))
+		pgm_log("[dialog] \"%s\" -> %d 单元\n", text, d.n);
 	return 1;
 }
 

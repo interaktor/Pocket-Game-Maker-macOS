@@ -1,21 +1,6 @@
-/***************************************************************************
- *            pgm_escript.c
- *
- *  PGM 事件脚本（.ev）解释器。
- *
- *  .ev 文件是**纯文本**，一行一条语句，而且每一行本身就是合法的 Lua 5.1
- *  代码 —— 所以解释器非常简单：把文件按行切开，逐行 luaL_loadbuffer + pcall。
- *  PGM 的 goto/gotoif 用的是物理行号，因此行数组必须与文件行号 1:1 对应
- *  （空行和注释行也要占位）。
- *
- *  注意：Lua 5.1 里 goto 不是关键字，所以 `goto(14)` 是一个合法的函数调用。
- *
- *  Lua 侧的调用节奏（见 EventScene.lua 的 FrameEvScriptUpdate）：
- *      if not EScriptIsEnd(s) then
- *          if EScriptCurrLine(s) >= 1 then EScriptDoline(s) end
- *          EScriptNext(s)
- *      end
- ***************************************************************************/
+/*
+ *  pgm_escript.c — PGM 事件脚本（.ev）解释器。
+ */
 
 #include <stdio.h>
 #include <stdlib.h>

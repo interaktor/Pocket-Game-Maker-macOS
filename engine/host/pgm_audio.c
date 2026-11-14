@@ -1,19 +1,6 @@
-/***************************************************************************
- *            pgm_audio.c
- *
- *  把 PGM 的音频 API 接到 libnge2 的 coolaudio 之上（macOS 后端是
- *  AVAudioPlayer，见 third_party/libnge2/coolaudio/nge_audio_mac.m）。
- *
- *  Lua 侧的签名（见 cefunctions.lua / base.lua）：
- *      mp3load(file, index)        按槽位加载 BGM
- *      mp3play/stop/pause/resume/replay(index)
- *      mp3volume(index, vol)  mp3isfinish(index)  mp3playtime(index)
- *      SoundCreate(pos)            创建一个音效对象，返回句柄
- *      SoundLoad(h, filename) / SoundLoad(h, buf, size)
- *      SoundPlay(h, times)  SoundStop/Pause/Resume/Unload/Volume(h, ...)
- *
- *  文件名会依次在 bin/data/{bgm,voice,sound}/ 下查找。
- ***************************************************************************/
+/*
+ *  pgm_audio.c — 把 PGM 的音频 API 接到 libnge2 的 coolaudio 之上（macOS 后端是
+ */
 
 #include <stdio.h>
 #include <stdlib.h>

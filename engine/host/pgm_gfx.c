@@ -1,13 +1,6 @@
-/***************************************************************************
- *            pgm_gfx.c
- *
- *  PGM 原生 API 的图形 / 字体 / 计时器实现，全部架在 libnge2 之上。
- *
- *  约定：
- *    * image 与 font 用 Lua userdata 包装，靠 __gc 自动释放，避免泄漏；
- *    * 资源通过封包句柄读取（gmdata.bin 资源包），不直接碰文件系统，
- *      这样玩家拿到的"只有 bin/ 目录"的游戏也能跑。
- ***************************************************************************/
+/*
+ *  pgm_gfx.c — PGM 原生 API 的图形 / 字体 / 计时器实现，全部架在 libnge2 之上。
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -339,6 +332,8 @@ static int api_FontCreate(lua_State *L)
 	pf = create_font_freetype(path, size, DISPLAY_PIXEL_FORMAT_4444);
 	if (!pf)
 		pgm_log("!! FontCreate 失败: %s\n", path);
+	if (getenv("PGM_MAC_DEBUG_TEXT"))
+		pgm_log("[font] create %s size=%d -> %p\n", path, size, (void *)pf);
 
 	u = (pgm_font_ud *)lua_newuserdata(L, sizeof(*u));
 	u->pf = pf;
@@ -383,6 +378,10 @@ static int api_FontDraw(lua_State *L)
 	if (pf && text && text[0])
 		font_drawtext(pf, text, (int)strlen(text), area, dx, dy,
 					  FONT_SHOW_NORMAL);
+	if (getenv("PGM_MAC_DEBUG_TEXT"))
+		pgm_log("[font] draw '%s' pf=%p area=%p(%dx%d) dx=%d dy=%d\n",
+				text ? text : "(null)", (void *)pf, (void *)area,
+				area ? area->w : -1, area ? area->h : -1, dx, dy);
 	return 0;
 }
 
@@ -443,7 +442,14 @@ static int api_TimerStop(lua_State *L)
 static int api_TimerGetTicks(lua_State *L)
 {
 	nge_timer *t = to_timer(L, 1);
-	lua_pushinteger(L, t ? (lua_Integer)t->get_ticks(t) : 0);
+	uint32_t v = t ? (uint32_t)t->get_ticks(t) : 0;
+	if (getenv("PGM_MAC_DEBUG_TEXT")) {
+		static int n = 0;
+		if ((n++ % 60) == 0)
+			pgm_log("[timer] ticks=%u started=%d\n", v,
+					t ? (int)t->is_started(t) : -1);
+	}
+	lua_pushinteger(L, (lua_Integer)v);
 	return 1;
 }
 

@@ -1,21 +1,6 @@
-/***************************************************************************
- *            pgm_pack.c
- *
- *  封包读取层。支持两种来源：
- *
- *    1. PGM_PACK_BIN —— gmcode.bin / gmdata.bin 二进制封包（玩家拿到的形态）
- *    2. PGM_PACK_DIR —— 明文的 src/ 目录（作者开发期使用）
- *
- *  封包格式的完整逆向记录见 docs/PACK-FORMAT.md。摘要：
- *
- *    容器   [数据区][128B × N 目录项][trailer]
- *    目录项 {u32 保留, u32 ?, u32 数据偏移, u32 数据长度, char 文件名[112]}
- *    载荷   一串 [u32 行长][行长个字节]，每行一条记录
- *    加密   plain[i] = cipher[i] ^ KEY[i % 64]     （索引 = 记录内偏移）
- *           另外打包器为避免密文出现 0x00，会把 plain==KEY[i] 的位置原样写出，
- *           解出的 0 需要填回 KEY[i]。
- *    坑     目录字段整体错位一格：第 i 个名字的 offset/size 写在 i+1 条的头部
- ***************************************************************************/
+/*
+ *  pgm_pack.c — 封包读取层。支持两种来源：
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -592,9 +577,9 @@ int pgm_pack_open(const char *path)
 		free(data);
 		return -1;
 	}
-	/* 只有脚本包（步长 128）存在"目录字段错位一格"的问题 */
-	if (stride == 128)
-		reconcile_dir(ents, nents, dir_start, data, (size_t)fsz, stride);
+	/* 两种封包的目录都"整体错位一格"：名字 i 的偏移/长度写在第 i+1 条头部，
+	   最后一条藏在 trailer 的 dataEnd 处。原版 PGM-CE 的 gmcode/gmdata 都这样。 */
+	reconcile_dir(ents, nents, dir_start, data, (size_t)fsz, stride);
 
 	g_pgm.packs[h].kind = (stride == 128) ? PGM_PACK_BIN : PGM_PACK_RES;
 	snprintf(g_pgm.packs[h].path, sizeof(g_pgm.packs[h].path), "%s",

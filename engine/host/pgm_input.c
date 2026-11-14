@@ -1,21 +1,6 @@
-/***************************************************************************
- *            pgm_input.c
- *
- *  输入回调桥接。
- *
- *  engine.sys 末尾会调用：
- *
- *      ControlInit("press_down","press_up","analog")
- *      TouchInit("mouse_down","mouse_up","mouse_move")
- *
- *  这里传的是 **Lua 全局函数名**。宿主必须把它们记下来，再注册成 C 回调，
- *  这样 nge2 的按键事件才能回到 Lua 的场景方法：
- *
- *      nge_mac 事件队列 -> nge_input.c InputProc -> btn_down()
- *          -> pgm_input 的跳板 -> Lua press_down(key) -> scene:key_down(key)
- *
- *  如果只是"记一下不接上"，键盘就完全没反应（之前就是这样）。
- ***************************************************************************/
+/*
+ *  pgm_input.c — 输入回调桥接。
+ */
 
 #include <stdio.h>
 #include <string.h>

@@ -1,21 +1,6 @@
-/***************************************************************************
- *            pgm_main.c
- *
- *  PGM-Mac 宿主入口。
- *
- *  启动顺序与 PGM 原始宿主一致：
- *    1. 定位游戏根目录（含 bin/ 与 src/）
- *    2. 起 Lua 状态、注册原生 API
- *    3. 执行 bin/pgm.ini —— 它是纯 Lua 赋值，末尾调用
- *         PGSetScript("engine.sys")
- *         PGSetState(PGM_SCRIPT)
- *       于是 4 由 pgm.ini 自己触发
- *    4. PGSetState(PGM_SCRIPT) 加载 engine.sys：
- *         PackCreate(data/gmcode.bin) / PackCreate(data/gmdata.bin)
- *         include("lg_init.lua") -> 逐层 include 出整个框架
- *
- *  P2 的验收标准就是走到 4 不崩、并看到 lg_init.lua 及其子脚本被逐个加载。
- ***************************************************************************/
+/*
+ *  pgm_main.c — PGM-Mac 宿主入口。
+ */
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,24 +1,6 @@
-/***************************************************************************
- *            pgm_effect.c
- *
- *  效果器（Effect*）的最小可用实现。
- *
- *  这些接口原本是 PGM 用来做淡入淡出/震动/过渡的。宿主层只需要让
- *  FGBase:render() 这条路径走通：
- *
- *      if self.effect_type then
- *          if not self.effect_p then return end        -- 没效果器就不画
- *          EffectDrawImage(self.effect_p, img, dx, dy) -- 画的时候带 alpha
- *          if EffectGetState(self.effect_p)==EFFECT_STOP then ... end
- *      end
- *
- *  所以关键点是：EffectFade*Create 必须返回一个**非 nil 的句柄**，
- *  EffectDrawImage 必须真的把图画出来，EffectGetState 必须在时间到了之后
- *  返回 EFFECT_STOP。
- *
- *  这里不做真正的逐帧 alpha 插值（那需要 nge2 的 per-draw alpha 混合），
- *  而是直接绘制 —— 视觉上没有淡入，但内容立刻可见、逻辑完全正确。
- ***************************************************************************/
+/*
+ *  pgm_effect.c — 效果器（Effect*）的最小可用实现。
+ */
 
 #include <stdio.h>
 #include <stdlib.h>

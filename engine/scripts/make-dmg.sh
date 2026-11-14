@@ -49,6 +49,7 @@ for f in "$APP/Contents/Frameworks/"*.dylib "$APP/Contents/MacOS/pgm-mac"; do
 done
 
 cp "$ROOT/engine/scripts/export-iso.sh" "$APP/Contents/Resources/" 2>/dev/null || true
+cp "$ROOT/engine/scripts/pack-data.py" "$APP/Contents/Resources/" 2>/dev/null || true
 cp "$ROOT/engine/scripts/mkiso.py" "$APP/Contents/Resources/" 2>/dev/null || true
 chmod +x "$APP/Contents/Resources/mkiso.py" 2>/dev/null || true
 cp "$ROOT/engine/scripts/export-app.sh" "$APP/Contents/Resources/" 2>/dev/null || true
