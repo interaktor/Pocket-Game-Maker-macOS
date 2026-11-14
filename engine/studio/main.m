@@ -257,6 +257,8 @@ static BOOL saveScaledPNG(NSString *src, NSSize target, NSString *dst) {
 @property (strong) NSTextField *previewOffsetLabel;
 @property (strong) NSButton *titleChk;
 @property (strong) NSArray *layoutSections;
+@property (assign) NSInteger shotTab;
+@property (copy) NSString *shotPath;
 @property (assign) NSInteger curSection;
 @property (strong) NSArray<NSDictionary *> *swapSpecs;
 @property (strong) NSScrollView *layoutPanel;
@@ -1590,6 +1592,31 @@ static NSString *PGMSampleMainScript(void) {
     [self rebuildLayoutRows];
 }
 
+- (void)selectTabIndex:(NSNumber *)n {
+    self.tabs.selectedSegment = n.integerValue;
+    [self switchTab:nil];
+}
+
+- (void)quitForShot {
+    [NSApp terminate:nil];
+}
+
+- (void)saveWindowShot {
+    // 浅色外观：深色模式下文字是白色，PDF 背景是白的会看不见
+    self.window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+    [self.window displayIfNeeded];
+    NSView *v = self.window.contentView;
+    // 走 PDF 而不是 cacheDisplay，后者会丢掉文字和 layer 背景
+    NSData *pdf = [v dataWithPDFInsideRect:v.bounds];
+    NSImage *img = [[NSImage alloc] initWithData:pdf];
+    NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:img.TIFFRepresentation];
+    NSData *png = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+    [png writeToFile:self.shotPath atomically:YES];
+    fprintf(stdout, "  截图: %s (%lu 字节)\n", self.shotPath.UTF8String,
+            (unsigned long)png.length);
+    fflush(stdout);
+}
+
 - (void)sectionChanged:(NSSegmentedControl *)sc {
     self.curSection = sc.selectedSegment;
     [self rebuildLayoutRows];
@@ -2297,6 +2324,29 @@ int main(int argc, const char *argv[]) {
             }
         }
         if (proj) [c loadProject:proj];
+
+        // 报窗口位置（供 screencapture -R 用）
+        if (getenv("PGM_STUDIO_FRAME")) {
+            NSWindow *w = c.window;
+            NSRect f = w.frame;
+            NSScreen *scr = w.screen ?: NSScreen.mainScreen;
+            CGFloat H = scr.frame.size.height;
+            fprintf(stdout, "FRAME %d %d %d %d\n",
+                    (int)NSMinX(f), (int)(H - NSMaxY(f)),
+                    (int)f.size.width, (int)f.size.height);
+            fflush(stdout);
+        }
+
+        // 截图模式：PGM_STUDIO_SHOT=路径 PGM_STUDIO_TAB=0/1/2
+        const char *shot = getenv("PGM_STUDIO_SHOT");
+        if (shot && *shot) {
+            c.shotPath = [NSString stringWithUTF8String:shot];
+            const char *tab = getenv("PGM_STUDIO_TAB");
+            NSInteger t = tab ? atoi(tab) : 0;
+            [c performSelector:@selector(selectTabIndex:) withObject:@(t) afterDelay:0.3];
+            [c performSelector:@selector(saveWindowShot) withObject:nil afterDelay:0.8];
+            [c performSelector:@selector(quitForShot) withObject:nil afterDelay:1.0];
+        }
         [NSApp activateIgnoringOtherApps:YES];
         [NSApp run];
     }

@@ -16,6 +16,20 @@
 `PSP homebrew` `PSP visual novel` `文字游戏` `视觉小说` `AVG` `Galgame` `Lua`
 `macOS 移植` `Apple Silicon` `PPSSPP` `ISO` `同人游戏` `KiriKiri` `NScripter` `ONScripter`
 
+## 界面
+
+**素材** —— 分类浏览，点一下复制指令，音频可试听
+
+![素材](docs/images/assets.png)
+
+**剧本** —— 内置编辑器，改完直接运行
+
+![剧本](docs/images/script.png)
+
+**布局** —— 拖滑块调对话框/选项/标题位置，右边实时预览
+
+![布局](docs/images/layout.png)
+
 ## 两种用法
 
 **只想玩 / 只想做游戏** → 下载 Releases 里的 `PGM-Studio.dmg`，把 App 拖进「应用程序」，双击打开。
