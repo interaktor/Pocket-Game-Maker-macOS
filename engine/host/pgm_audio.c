@@ -18,13 +18,9 @@ static audio_play_p g_mp3[MP3_SLOTS];
 static audio_play_p g_snd[SND_SLOTS];
 
 /*
- * 句柄校验：Lua 侧可能在校验之后仍然拿着已经 unload 的句柄去调用
- * （base.lua 的 SoundBase:unload 之后并没有把 voice_p 置空），
- * 如果直接把对象 free 掉就会 use-after-free 崩在 p->volume 这种地方。
- * 所以：
- *   1. 所有音效对象登记在 g_snd[] 里；
- *   2. SoundUnload 只 stop，句柄留给下一次 load 复用；
- *   3. to_sound() 每次都查表，查不到就返回 NULL，调用方自然安全返回。
+ * 句柄校验：base.lua 的 SoundBase:unload 之后没有把 voice_p 置空，Lua 侧
+ * 仍可能拿旧句柄去调用，直接 free 就会 use-after-free。所以音效对象都登记
+ * 在 g_snd[] 里，SoundUnload 只 stop，to_sound() 查不到表就返回 NULL。
  */
 static int snd_registered(audio_play_p p)
 {
@@ -295,13 +291,9 @@ static int api_SoundRewind(lua_State *L)
 	return 0;
 }
 
-/* 只停止 + 摘除登记，不 free：Lua 侧可能还留着句柄 */
-/* SoundUnload(h) —— 只停止播放并丢弃已加载的数据，句柄仍然有效。
- *
- * 关键：base.lua 的 SoundBase:load() 每次都会先调 SoundUnload 再调
- * SoundLoad（见 system/base.lua:472），所以这里绝不能把句柄从注册表摘掉，
- * 否则后续所有 SoundLoad 都会因为句柄失效而静默失败——表现就是音频
- * 永远播不出声音。真正让句柄失效的是 SoundDelete。
+/* SoundUnload：只停止播放，句柄保持有效。
+ * base.lua:472 的 SoundBase:load() 每次都先 Unload 再 Load，这里若摘掉注册
+ * 表，后续 SoundLoad 会静默失败、整体没声音。让句柄失效的是 SoundDelete。
  */
 static int api_SoundUnload(lua_State *L)
 {

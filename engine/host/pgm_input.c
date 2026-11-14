@@ -11,8 +11,6 @@
 static char g_down[64], g_up[64], g_analog[64];
 static char g_mdown[64], g_mup[64], g_mmove[64];
 
-/* ------------------------------------------------------------------ */
-
 static void call_lua(const char *name, int nargs, const int *argv)
 {
 	lua_State *L = g_pgm.L;
@@ -80,9 +78,7 @@ static void on_mouse_move(int x, int y)
 	call_lua(g_mmove, 6, v);
 }
 
-/* ------------------------------------------------------------------ */
-/* 对 Lua 暴露的接口                                                   */
-/* ------------------------------------------------------------------ */
+/* 对 Lua 暴露的接口 */
 
 int pgm_api_control_init(lua_State *L)
 {

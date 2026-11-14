@@ -12,27 +12,15 @@
 #include "pgm.h"
 #include "nge_charsets.h"
 
-/* ------------------------------------------------------------------ */
-/* 零打包模式                                                          */
-/*                                                                     */
-/* 原版 PGM 的工作流是：写 src/ → 跑 pgsp.exe 打 gmcode.bin → 跑      */
-/* pgrp.exe 打 gmdata.bin → 才能运行。那两个是 Windows 程序，macOS    */
-/* 上根本跑不了，所以这里让引擎在封包文件不存在时直接读散装目录：       */
-/*                                                                     */
-/*     脚本 -> <root>/src/            （user 下的 .ev、system 下的 .lua） */
-/*     资源 -> <root>/src/files/      （bg/xxx.png ...）                */
-/*                                                                     */
-/* 于是作者改完 .ev、丢进一张图，直接运行就见效，不需要任何打包工具。   */
-/* 想强制走二进制封包（测试玩家拿到的形态）就设 PGM_MAC_PACK=1。       */
-/* ------------------------------------------------------------------ */
+/* 零打包模式：封包文件不存在时直接读 src/ 和 src/files/，
+ * 免得依赖 pgsp.exe / pgrp.exe 那套 Windows 打包工具。
+ * 设 PGM_MAC_PACK=1 可强制走二进制封包。 */
 
 pgm_game g_pgm;
 
 static int pack_count = 0;
 
-/* ------------------------------------------------------------------ */
-/* 密钥流：64 字节固定表（见 docs/PACK-FORMAT.md 4.2）                  */
-/* ------------------------------------------------------------------ */
+/* 密钥流：64 字节固定表（见 docs/PACK-FORMAT.md 4.2） */
 static const unsigned char PGM_KEY[64] = {
 	0x32, 0x5a, 0x5c, 0x59, 0x50, 0x40, 0x30, 0x33,
 	0x7d, 0x30, 0x7b, 0x78, 0x7e, 0x64, 0x30, 0x33,
@@ -53,9 +41,7 @@ static uint32_t rd32(const unsigned char *p)
 		((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
-/* ------------------------------------------------------------------ */
-/* 路径解析：先 bin/，后 src/                                          */
-/* ------------------------------------------------------------------ */
+/* 路径解析：先 bin/，后 src/ */
 
 /* 递归建目录，等价 mkdir -p */
 int pgm_mkdir_p(const char *path)
@@ -144,9 +130,7 @@ int pgm_resolve(const char *relpath, char *out, size_t outsz)
 	return -1;
 }
 
-/* ------------------------------------------------------------------ */
-/* 二进制封包：目录解析                                                */
-/* ------------------------------------------------------------------ */
+/* 二进制封包：目录解析 */
 
 /* 校验从 start 起 nums 条记录是否像合法目录；成功填 ents，返回 1 */
 static int read_entries(const unsigned char *d, size_t n, size_t start,
@@ -356,9 +340,7 @@ static void reconcile_dir(pgm_dir_entry *e, int nums, size_t dir_start,
 	free(size);
 }
 
-/* ------------------------------------------------------------------ */
-/* 二进制封包：按名字取出并解密一个文件                                  */
-/* ------------------------------------------------------------------ */
+/* 二进制封包：按名字取出并解密一个文件 */
 
 static int read_bin_file(pgm_pack *pk, const char *name, char **out,
 						 size_t *out_size)
@@ -429,9 +411,7 @@ static int read_bin_file(pgm_pack *pk, const char *name, char **out,
 	}
 }
 
-/* ------------------------------------------------------------------ */
-/* 打开 / 读取                                                        */
-/* ------------------------------------------------------------------ */
+/* 打开 / 读取 */
 
 static int looks_binary_pack(const unsigned char *sig, size_t n)
 {
@@ -643,17 +623,8 @@ int pgm_pack_open(const char *path)
 	return h;
 }
 
-/* ------------------------------------------------------------------ */
-/* UTF-8 剧本自动转 GBK                                                */
-/*                                                                     */
-/* 引擎的字体层按 GBK 字节序列查表，所以剧本里的中文原本必须是 GBK。   */
-/* 但现在所有编辑器（VS Code / Sublime / TextEdit）默认都存 UTF-8，    */
-/* 作者写完发现中文全是乱码，得先卡在这里很久。                        */
-/*                                                                     */
-/* 这里在读取 .lua / .ev 时自动判断：内容如果是合法 UTF-8 且有非 ASCII  */
-/* 字符，就用引擎自带的 nge_charsets_utf8_to_gbk 转成 GBK 再交给 Lua。 */
-/* 于是作者直接用默认编码写就行。转换不增删换行，.ev 的行号不受影响。   */
-/* ------------------------------------------------------------------ */
+/* UTF-8 剧本自动转 GBK：字体层按 GBK 字节序列查表，而编辑器默认存 UTF-8。
+ * 转换不增删换行，.ev 的行号不受影响。 */
 
 /* 返回 1 表示含非 ASCII 的合法 UTF-8；纯 ASCII 返回 0；非法返回 -1 */
 static int utf8_scan(const unsigned char *s, size_t n)

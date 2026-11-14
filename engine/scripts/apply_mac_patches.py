@@ -24,17 +24,12 @@ CHECK_ONLY = "--check" in sys.argv
 
 # (相对路径, 旧子串, 新子串, 期望出现次数)
 PATCHES = [
-    # ---------------------------------------------------------------
     # nge_timer.c — 走 POSIX gettimeofday 分支
-    # ---------------------------------------------------------------
     ("src/nge_timer.c",
      b"#if defined NGE_LINUX || defined NGE_IPHONE || defined NGE_ANDROID\n#define NGE_UNIX",
      b"#if defined NGE_LINUX || defined NGE_IPHONE || defined NGE_ANDROID || defined NGE_MAC\n#define NGE_UNIX",
      1),
-
-    # ---------------------------------------------------------------
     # nge_io_dir.c — 走 POSIX dirent 分支
-    # ---------------------------------------------------------------
     ("src/nge_io_dir.c",
      b"#elif defined NGE_PSP || defined NGE_LINUX || defined NGE_IPHONE || defined NGE_ANDROID\n",
      b"#elif defined NGE_PSP || defined NGE_LINUX || defined NGE_IPHONE || defined NGE_ANDROID || defined NGE_MAC\n",
@@ -43,18 +38,12 @@ PATCHES = [
      b"#if defined NGE_LINUX || defined NGE_IPHONE || defined NGE_ANDROID\n#include <unistd.h>",
      b"#if defined NGE_LINUX || defined NGE_IPHONE || defined NGE_ANDROID || defined NGE_MAC\n#include <unistd.h>",
      1),
-
-    # ---------------------------------------------------------------
     # nge_debug_log.c — _vsnprintf 是 MSVC 专有名字
-    # ---------------------------------------------------------------
     ("src/nge_debug_log.c",
      b"#if defined NGE_LINUX || defined NGE_PSP\n#define _vsnprintf  vsnprintf",
      b"#if defined NGE_LINUX || defined NGE_PSP || defined NGE_MAC\n#define _vsnprintf  vsnprintf",
      1),
-
-    # ---------------------------------------------------------------
     # nge_image_effect.c — 桌面 OpenGL 分支
-    # ---------------------------------------------------------------
     ("src/nge_image_effect.c",
      b"#if defined NGE_WIN || defined NGE_IPHONE || defined NGE_LINUX || defined NGE_ANDROID\n#define NGE_NORMAL_GL_API",
      b"#if defined NGE_WIN || defined NGE_IPHONE || defined NGE_LINUX || defined NGE_ANDROID || defined NGE_MAC\n#define NGE_NORMAL_GL_API",
@@ -64,9 +53,7 @@ PATCHES = [
      b"#elif defined NGE_MAC\n\n#include <OpenGL/gl.h>\n\n#elif defined NGE_WIN || defined NGE_LINUX\n\n#include <GL/gl.h>\n\n#if defined NGE_LINUX\n#include <X11/Xlib.h>",
      1),
 
-    # ---------------------------------------------------------------
     # nge_input.h — 键位支持宏 + PSP_BUTTON_* 常量
-    # ---------------------------------------------------------------
     ("include/nge_input.h",
      b"#if defined NGE_PSP || defined NGE_LINUX || defined NGE_WIN || defined NGE_IPHONE\n#define NGE_INPUT_BUTTON_SUPPORT",
      b"#if defined NGE_PSP || defined NGE_LINUX || defined NGE_WIN || defined NGE_IPHONE || defined NGE_MAC\n#define NGE_INPUT_BUTTON_SUPPORT",
@@ -100,10 +87,7 @@ PATCHES = [
      b"#if defined NGE_WIN || defined NGE_LINUX\n#define NGE_INPUT_MOUSE_FULL_SUPPORT",
      b"#if defined NGE_WIN || defined NGE_LINUX || defined NGE_MAC\n#define NGE_INPUT_MOUSE_FULL_SUPPORT",
      1),
-
-    # ---------------------------------------------------------------
     # nge_input.c — 引入 macOS 后端、摇杆模拟、事件轮询
-    # ---------------------------------------------------------------
     # (a) 引入后端头文件
     ("src/nge_input.c",
      b"extern Window   g_win;\n#endif",
@@ -204,10 +188,7 @@ PATCHES = [
      b"#if defined NGE_WIN || defined NGE_LINUX\n\tif(analog_proc!=NULL&&ana_ret){",
      b"#if defined NGE_WIN || defined NGE_LINUX || defined NGE_MAC\n\tif(analog_proc!=NULL&&ana_ret){",
      1),
-
-    # ---------------------------------------------------------------
     # nge_graphics.c — 桌面 GL 分支 + 窗口/上下文创建
-    # ---------------------------------------------------------------
     ("src/nge_graphics.c",
      b"#elif defined NGE_WIN || defined NGE_LINUX\n#include <GL/glew.h>\n#include <GL/gl.h>",
      b"""#elif defined NGE_MAC
@@ -323,7 +304,6 @@ FIXUP_PATCHES = [
      b"#elif defined __linux__ || defined NGE_IPHONE\n#include <unistd.h>",
      b"#elif defined __linux__ || defined NGE_IPHONE || defined __APPLE__\n#include <unistd.h>",
      1),
-
     # nge_package_zip.c 依赖 minizip 的 unzip.h；PGM 用的是自己的封包格式，
     # macOS 构建里直接排除该模块（CMake 侧处理），此处无需改源码。
 ]

@@ -350,12 +350,9 @@ static int api_FontSetColor(lua_State *L)
 	return 0;
 }
 
-/* FontDraw(font, area_image, text, dx, dy)
- *
- * 注意参数顺序是"绘制区图像在前、文本在后"（见 SpeakScene.lua:410），
- * 但 Lua 侧也有 (font, text, area, dx, dy) 的写法，所以这里按类型自动识别：
- * 第 2 个参数若是 image userdata 就当 area，否则当文本。
- */
+/* FontDraw：按 SpeakScene.lua:410 的参数顺序是"绘制区在前、文本在后"，但 Lua 侧
+ * 也有 (font, text, area, dx, dy) 的写法，所以按类型识别第 2 个参数。 */
+
 static int api_FontDraw(lua_State *L)
 {
 	PFont pf = to_font(L, 1);
@@ -479,13 +476,8 @@ static int api_SoundNoop(lua_State *L)
 	return 0;
 }
 
-/* ================================================================== */
-/* 文本层清空                                                          */
-/*                                                                    */
-/* textclear 是原生 API。Lua 侧的文本层是 DialogLayer.new()，它的 quad[]  */
-/* 是一组离屏 image，文字先画在 quad 上、再由 text_layer_render() 贴到屏幕。 */
-/* 不实现 textclear 的话上一句不会消失，会和下一句叠在一起。              */
-/* ================================================================== */
+/* 文本层清空：Lua 侧文字先画在 DialogLayer 的离屏 quad 上，不实现 textclear
+ * 的话上一句不会消失，会和下一句叠在一起。 */
 
 static int api_textclear(lua_State *L)
 {

@@ -95,14 +95,8 @@ static void split_lines(pgm_escript *e, char *text)
 	}
 }
 
-/* ------------------------------------------------------------------ */
-/* 标签表                                                              */
-/*                                                                     */
-/* .ev 里的 *名字 是行号别名。gotoif(cond,*savedata) 这种写法本身不是   */
-/* 合法 Lua（* 不能做前缀运算符），必须在执行前把 *名字 替换成它所在的  */
-/* 物理行号，变成 gotoif(cond,14) —— Lua 5.1 里 goto 不是关键字，所以   */
-/* goto(14) 就是一次普通的函数调用。                                   */
-/* ------------------------------------------------------------------ */
+/* 标签表：.ev 里的 *名字 是行号别名，执行前得替换成物理行号，
+ * 比如 gotoif(cond,*savedata) 变成 gotoif(cond,14)。 */
 
 static int is_name_char(unsigned char c)
 {
@@ -354,13 +348,9 @@ static int api_EScriptNext(lua_State *L)
 	return 0;
 }
 
-/* EScriptBack(script)
- *
- * run() 创建脚本后会立刻调这个，而 FrameEvScriptUpdate 在 EScriptDoline 之后
- * **总会**再调一次 EScriptNext。所以这里必须允许 cur 减到 0：
- *     cur: 1 --Back--> 0 --Next--> 1   => 下一帧从第 1 行开始
- * 若像以前那样卡在 1，Next 会把它推到 2，**第 1 行就被静默跳过了**
- * （实测 first.ev 的 msgboxon() 就是这样丢的）。
+/* EScriptBack：run() 之后立刻调用，而 FrameEvScriptUpdate 在 Doline 之后总会
+ * 再 Next 一次，所以 cur 必须允许减到 0（1 --Back--> 0 --Next--> 1）。
+ * 卡在 1 的话 Next 会推到 2，第 1 行被静默跳过（first.ev 的 msgboxon 就这样丢过）。
  */
 static int api_EScriptBack(lua_State *L)
 {
@@ -370,11 +360,8 @@ static int api_EScriptBack(lua_State *L)
 	return 0;
 }
 
-/* EScriptJump(script, line)
- *
- * 语义要设成 label - 1：Lua 侧（EventScene.lua 的 FrameEvScriptUpdate）在
- * EScriptDoline 之后**总会**再调一次 EScriptNext，所以若直接把 cur 设成
- * label，跳转就会落到 label+1 上。设为 label-1 才能让 Next 正中目标行。
+/* EScriptJump：cur 要设成 label - 1。FrameEvScriptUpdate 在 Doline 之后总会
+ * 再 Next 一次，直接设 label 会落到 label+1 上。
  */
 static int api_EScriptJump(lua_State *L)
 {

@@ -200,15 +200,10 @@ int main(int argc, char *argv[])
 	}
 
 	/*
-	 * 兼容性补丁：FGBase:load 里用 event[255] 选择 ImageClone 的方式
-	 *
-	 *     if event[255] == 0 then self.image_p[i+1] = ImageClone(image)
-	 *     elseif event[255] == 1 then self.image_p[i+1] = ImageClone(image,1) end
-	 *
-	 * 但 event[255] 在整个 Lua 框架里从未被赋值过（globals.lua 只有
-	 * event = {}），所以两个分支都不匹配，image_p 永远保持 false，
-	 * 于是所有精灵（消息框/背景/立绘）都不会被绘制。
-	 * 原版宿主应该是在原生层给 event 提供了默认值，这里补上。
+	 * FGBase:load 按 event[255] 选择 ImageClone 的调用方式，但 event[255]
+	 * 在 Lua 框架里从未被赋值（globals.lua 只有 event = {}），两个分支都不
+	 * 匹配，image_p 恒为 false，消息框/背景/立绘就全不绘制。原版宿主应该在
+	 * 原生层给了默认值，这里补上。
 	 */
 	{
 		lua_State *L2 = g_pgm.L;

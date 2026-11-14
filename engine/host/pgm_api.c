@@ -377,14 +377,8 @@ void pgm_register_api(lua_State *L)
 	reg_int(L, "IMG_565",  DISPLAY_PIXEL_FORMAT_565);
 }
 
-/* ================================================================== */
-/* am_scene_render / am_scene_update —— PGM 的场景合成层              */
-/*                                                                    */
-/* am_scene 里 bg / texfg / fg / ani 四组对象（FGBase / TexFgBase /    */
-/* ANIBase）各自实现了 render() 与 update()，所以这里只需要按层序把它们 */
-/* 依次调一遍。层序与 PGM 的绘制顺序一致：背景 -> 纹理立绘 -> 普通立绘 -> */
-/* 动画。                                                             */
-/* ================================================================== */
+/* am_scene 的场景合成：bg / texfg / fg / ani 四组对象各自有 render() 与
+ * update()，按 PGM 的绘制顺序（背景 -> 纹理立绘 -> 普通立绘 -> 动画）依次调用。 */
 
 static const char *PGM_SCENE_LAYERS[] = { "bg", "texfg", "fg", "ani", NULL };
 

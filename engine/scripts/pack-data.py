@@ -161,12 +161,10 @@ def write_pack(path, entries, stride, name_off, trailer, script_pack):
         nb = name.encode("ascii", "ignore")[: stride - name_off - 1]
         table[p + name_off:p + name_off + len(nb)] = nb
 
-    # trailer 的字段布局照抄原版打包工具（pgsp/pgrp）的输出：
+    # trailer 字段照抄原版 pgsp/pgrp 的输出：
     #   gmcode: {0, 末条行数, dataEnd, 末条长度, 1, nums, 123456, "game script"}
     #   gmdata: {dataEnd, 0x130b, 1, nums, 0, "res files", … , 1}
-    # dataEnd 是「最后一个文件的数据起点」，不是目录起点 —— 因为错位目录里
-    # 最后一条的字段被上一条占用，它自己的位置只能从 trailer 取。
-    # 0x1e240(123456) 与 0x130b 是打包器写的固定标记。
+    # dataEnd 是最后一个文件的数据起点（错位目录里末条的字段被上一条占用）。
     data_end = offs[-1][0]
     last_size = dir_start - data_end
     tr = bytearray(trailer)
