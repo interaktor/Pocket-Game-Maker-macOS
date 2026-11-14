@@ -44,14 +44,25 @@ LOG=/tmp/check_run.log
 SAVE="$GAME/PGMSAVEDATA"
 HAD_SAVE=0
 [ -e "$SAVE" ] && HAD_SAVE=1
-PGM_MAC_FRAMES=300 "$REL/pgm-mac" "$GAME" >"$LOG" 2>&1 || true
+set +e
+PGM_MAC_FRAMES=300 "$REL/pgm-mac" "$GAME" >"$LOG" 2>&1
+RUN_STATUS=$?
+set -e
 ERRS=$(grep -c '!!' "$LOG" 2>/dev/null || true)
 say "  报错数" "$ERRS"
-if [ "$ERRS" != "0" ]; then
-	echo "  前几条："
-	grep '!!' "$LOG" | head -5 | sed 's/^/    /'
+if [ "$RUN_STATUS" != "0" ]; then
+	echo "  引擎退出码: $RUN_STATUS"
 	FAIL=1
 fi
+if [ "$ERRS" != "0" ]; then
+		echo "  前几条："
+		grep '!!' "$LOG" | head -5 | sed 's/^/    /'
+		FAIL=1
+	fi
+	if ! grep -q '主循环结束' "$LOG"; then
+		echo "  没有看到主循环结束"
+		FAIL=1
+	fi
 
 # 测试自己生成的存档只在原本没有时才清掉，别删玩家已有的存档
 if [ "$HAD_SAVE" = "0" ]; then

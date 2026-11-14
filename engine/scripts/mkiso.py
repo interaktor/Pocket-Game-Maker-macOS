@@ -58,12 +58,27 @@ def main():
     pvd_sector = 16
     term_sector = 17
     lpt_sector = 18
-    nsec_l = ((len(alldirs) * 10 + 200) // SECTOR + 1)
+
+    for d in alldirs:
+        d.parent = root
+    for d in alldirs:
+        for c in d.children:
+            if c.isdir:
+                c.parent = d
+
+    def path_table_size():
+        size = 0
+        for d in alldirs:
+            n = len(d.name.encode())
+            size += 8 + n + (n & 1)
+        return size
+
+    nsec_l = max(1, (path_table_size() + SECTOR - 1) // SECTOR)
     mpt_sector = lpt_sector + nsec_l
     cur = mpt_sector + nsec_l
     for d in alldirs:
         d.extent = cur
-        d._sz = dir_size(d) if False else dir_size(d)
+        d._sz = dir_size(d)
         cur += d._sz // SECTOR
     for f in files:
         f.extent = cur
@@ -81,11 +96,9 @@ def main():
             o += nm
             if len(nm) % 2: o.append(0)
         return bytes(o)
-    for d in alldirs: d.parent = root
-    for d in alldirs:
-        for c in d.children:
-            if c.isdir: c.parent = d
     lpt, mpt = pt(False), pt(True)
+    if len(lpt) > nsec_l * SECTOR or len(mpt) > nsec_l * SECTOR:
+        raise SystemExit('路径表空间计算错误')
 
     img = bytearray(total * SECTOR)
     # PVD

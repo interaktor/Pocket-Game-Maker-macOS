@@ -7,6 +7,15 @@
 
 static const CGFloat kThumbW = 128, kThumbH = 90;
 
+static BOOL validLeafName(NSString *name) {
+    if (!name.length || [name isEqualToString:@"."] || [name isEqualToString:@".."])
+        return NO;
+    NSCharacterSet *bad = [NSCharacterSet characterSetWithCharactersInString:@"/:\\\0"];
+    if ([name rangeOfCharacterFromSet:bad].location != NSNotFound)
+        return NO;
+    return [name rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound;
+}
+
 @interface AssetItem : NSObject
 @property (copy) NSString *name;      // 文件名
 @property (copy) NSString *path;      // 完整路径
@@ -887,8 +896,8 @@ static NSString *PGMSampleMainScript(void) {
     if ([a runModal] != NSAlertFirstButtonReturn) return;
 
     NSString *name = tf.stringValue;
-    if (name.length == 0) {
-        self.status.stringValue = @"没起名字，取消";
+    if (!validLeafName(name)) {
+        self.status.stringValue = @"工程名不能为空，也不能包含路径分隔符";
         return;
     }
 
@@ -1150,6 +1159,10 @@ static NSString *PGMSampleMainScript(void) {
     a.accessoryView = tf;
     if ([a runModal] != NSAlertFirstButtonReturn) return;
     NSString *name = tf.stringValue.length ? tf.stringValue : @"MyGame";
+    if (!validLeafName(name)) {
+        self.status.stringValue = @"游戏名不能包含路径分隔符";
+        return;
+    }
 
     NSOpenPanel *op = [NSOpenPanel openPanel];
     op.canChooseDirectories = YES;

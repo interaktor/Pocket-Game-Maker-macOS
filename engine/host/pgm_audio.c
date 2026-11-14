@@ -23,7 +23,7 @@ static audio_play_p g_snd[SND_SLOTS];
  * 如果直接把对象 free 掉就会 use-after-free 崩在 p->volume 这种地方。
  * 所以：
  *   1. 所有音效对象登记在 g_snd[] 里；
- *   2. SoundUnload 只 stop、并从登记表摘除，**不 free**；
+ *   2. SoundUnload 只 stop，句柄留给下一次 load 复用；
  *   3. to_sound() 每次都查表，查不到就返回 NULL，调用方自然安全返回。
  */
 static int snd_registered(audio_play_p p)
@@ -199,6 +199,11 @@ static int api_SoundCreate(lua_State *L)
 			break;
 		}
 	}
+	if (i == SND_SLOTS) {
+		p->destroy(p);
+		lua_pushnil(L);
+		return 1;
+	}
 	lua_pushlightuserdata(L, p);
 	return 1;
 }
@@ -309,7 +314,7 @@ static int api_SoundUnload(lua_State *L)
 	return 0;
 }
 
-/* SoundDelete(h) —— 停播 + 注销句柄（不释放，避免 base.lua 里的悬空指针） */
+/* SoundDelete(h) —— 停播、释放并注销句柄。 */
 static int api_SoundDelete(lua_State *L)
 {
 	audio_play_p p = to_sound(L, 1);
@@ -318,8 +323,10 @@ static int api_SoundDelete(lua_State *L)
 	if (p) {
 		p->stop(p);
 		i = snd_registered(p);
-		if (i >= 0)
+		if (i >= 0) {
+			p->destroy(p);
 			g_snd[i] = NULL;
+		}
 	}
 	return 0;
 }

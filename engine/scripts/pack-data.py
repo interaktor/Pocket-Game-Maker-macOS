@@ -211,26 +211,32 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     scripts, images = collect(root)
 
-    seen = set()
+    seen = {}
     script_entries = []
     for p in scripts:
         name = os.path.basename(p)
-        if name in seen:
-            continue
-        seen.add(name)
         with open(p, "rb") as f:
-            payload, lines = encode_script(to_gbk(p, f.read()), name.lower().endswith(".ev"))
+            raw = f.read()
+        if name in seen:
+            if seen[name][1] != raw:
+                raise SystemExit("脚本文件名冲突: %s 和 %s" % (seen[name][0], p))
+            continue
+        seen[name] = (p, raw)
+        payload, lines = encode_script(to_gbk(p, raw), name.lower().endswith(".ev"))
         script_entries.append((name, payload, lines))
 
-    seen.clear()
+    seen = {}
     res_entries = []
     for p in images:
         name = os.path.basename(p)
-        if name in seen:
-            continue
-        seen.add(name)
         with open(p, "rb") as f:
-            res_entries.append((name, f.read(), 0))
+            raw = f.read()
+        if name in seen:
+            if seen[name][1] != raw:
+                raise SystemExit("资源文件名冲突: %s 和 %s" % (seen[name][0], p))
+            continue
+        seen[name] = (p, raw)
+        res_entries.append((name, raw, 0))
 
     if not script_entries or not res_entries:
         raise SystemExit("没有找到脚本或图片: %s" % root)
